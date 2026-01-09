@@ -1,11 +1,13 @@
-import eslint from "@eslint/js";
-import tseslint from "typescript-eslint";
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  eslintConfigPrettier,
   {
-    files: ["src/**/*.ts"],
+    files: ['src/**/*.ts'],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -13,13 +15,10 @@ export default tseslint.config(
       },
     },
     rules: {
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_" },
-      ],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
-    ignores: ["dist/**", "node_modules/**", "*.config.js"],
+    ignores: ['dist/**', 'node_modules/**', '*.config.js'],
   }
 );
