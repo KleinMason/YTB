@@ -2,7 +2,8 @@
 
 **YTB** = **Yesterday / Today / Blockers**. This project will be a small web app to capture daily stand-up notes per project, browse history, and copy a Slack-friendly summary to the clipboard.
 
-### Planned v1 features
+## Planned v1 features
+
 - Email + password authentication
 - CRUD projects (name + optional color/icon)
 - One YTB entry per project per date (Markdown for Yesterday/Today/Blockers)
@@ -10,7 +11,6 @@
 - Browse entries by date range
 - One-click copy to clipboard in Slack-friendly format
 
-### Status
+## Status
+
 Early scaffold / WIP.
-
-
