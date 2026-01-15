@@ -163,3 +163,39 @@ describe('Request Logging Middleware', () => {
     expect(response.body).toHaveProperty('status', 'ok');
   });
 });
+
+describe('Password Hashing Library (bcrypt)', () => {
+  it('should import bcrypt library correctly', async () => {
+    const bcrypt = await import('bcrypt');
+    expect(bcrypt).toBeDefined();
+    expect(typeof bcrypt.hash).toBe('function');
+    expect(typeof bcrypt.compare).toBe('function');
+  });
+
+  it('should generate hash from password', async () => {
+    const bcrypt = await import('bcrypt');
+    const password = 'testPassword123';
+    const hash = await bcrypt.hash(password, 10);
+
+    expect(hash).toBeDefined();
+    expect(typeof hash).toBe('string');
+    expect(hash).not.toBe(password);
+    expect(hash.length).toBeGreaterThan(0);
+    // bcrypt hashes start with $2a$, $2b$, or $2y$
+    expect(hash).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('should generate different hashes for the same password', async () => {
+    const bcrypt = await import('bcrypt');
+    const password = 'testPassword123';
+    const hash1 = await bcrypt.hash(password, 10);
+    const hash2 = await bcrypt.hash(password, 10);
+
+    expect(hash1).not.toBe(hash2);
+    // Both hashes should be valid and verifiable
+    const isValid1 = await bcrypt.compare(password, hash1);
+    const isValid2 = await bcrypt.compare(password, hash2);
+    expect(isValid1).toBe(true);
+    expect(isValid2).toBe(true);
+  });
+});
