@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { app } from './index.js';
+import { signToken } from './utils/jwt.js';
 
 describe('GET /', () => {
   it('should return API status message', async () => {
@@ -561,5 +562,115 @@ describe('JWT Verification Utility Function', () => {
     );
 
     expect(() => verifyToken(expiredToken)).toThrow();
+  });
+});
+
+describe('Authentication Middleware', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should extract token from Authorization header', async () => {
+    const token = signToken('user-123');
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('userId', 'user-123');
+  });
+
+  it('should verify token using JWT utility', async () => {
+    const token = signToken('user-456');
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('authenticated', true);
+  });
+
+  it('should attach user id to request object', async () => {
+    const userId = 'user-789';
+    const token = signToken(userId);
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe(userId);
+  });
+
+  it('should return 401 if Authorization header is missing', async () => {
+    const response = await request(app).get('/api/test-auth');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 if token format is invalid', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'InvalidFormat token123');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid authorization format. Expected: Bearer <token>');
+  });
+
+  it('should return 401 if token is empty after Bearer prefix', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'Bearer ');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+  });
+
+  it('should return 401 if token is invalid', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'Bearer invalid.token.here');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return 401 if token is expired', async () => {
+    const jwt = await import('jsonwebtoken');
+    const expiredToken = jwt.sign(
+      { userId: 'user-expired' },
+      'test-jwt-secret-key-for-testing',
+      { expiresIn: '-1s' }
+    );
+
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return 401 if token is signed with different secret', async () => {
+    const jwt = await import('jsonwebtoken');
+    const tokenWithDifferentSecret = jwt.sign({ userId: 'user-123' }, 'different-secret');
+
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${tokenWithDifferentSecret}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
   });
 });

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import morgan from 'morgan';
+import { authMiddleware, AuthenticatedRequest } from './middleware/auth.js';
 
 export const app: Express = express();
 const port = parseInt(process.env.PORT ?? '3000', 10);
@@ -34,6 +35,11 @@ app.post('/api/test-error', (_req, _res, next) => {
   const error = new Error('Test error with message');
   (error as Error & { statusCode?: number }).statusCode = 400;
   next(error);
+});
+
+// Test endpoint for authentication middleware verification (used in tests)
+app.get('/api/test-auth', authMiddleware, (req: AuthenticatedRequest, res) => {
+  res.json({ userId: req.user?.userId, authenticated: true });
 });
 
 // Global error handling middleware
