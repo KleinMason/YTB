@@ -49,3 +49,18 @@
 
 **Foreign key constraint:**
 - `projects_user_id_fkey` references `users(id)` with ON DELETE CASCADE
+
+## 2026-01-15: Foreign Key from Project to User Verified
+
+**Feature:** Add foreign key from Project to User
+
+**Summary:**
+- Verified that the foreign key constraint `projects_user_id_fkey` exists on the `user_id` column
+- Constraint references `users(id)` with ON DELETE CASCADE and ON UPDATE CASCADE
+- Tested constraint enforcement: inserting a project with non-existent user_id is rejected with appropriate error
+- Tested cascade delete behavior: deleting a user automatically deletes all associated projects
+
+**Verification results:**
+- Foreign key constraint exists: `projects_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)`
+- Invalid user_id rejected: `ERROR: insert or update on table "projects" violates foreign key constraint`
+- Cascade delete confirmed: Deleting user automatically removes associated projects

@@ -40,7 +40,7 @@
       "Configure cascade delete behavior",
       "Verify constraint is enforced"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "database",
