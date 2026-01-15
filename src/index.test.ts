@@ -1,7 +1,16 @@
 import request from 'supertest';
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './index.js';
 import { signToken } from './utils/jwt.js';
+
+// Mock prisma client
+vi.mock('./db/prisma.js', () => ({
+  prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 describe('GET /', () => {
   it('should return API status message', async () => {
@@ -566,6 +575,15 @@ describe('JWT Verification Utility Function', () => {
 });
 
 describe('POST /api/auth/register', () => {
+  beforeEach(async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('should accept email and password in request body', async () => {
     const response = await request(app)
       .post('/api/auth/register')
@@ -724,12 +742,110 @@ describe('POST /api/auth/register', () => {
   });
 
   it('should return 201 status for successful validation', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
     const response = await request(app)
       .post('/api/auth/register')
       .send({ email: 'newuser@example.com', password: 'SecurePass123' })
       .set('Content-Type', 'application/json');
 
     expect(response.status).toBe(201);
+  });
+});
+
+describe('POST /api/auth/register - Email exists check', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should query database for existing email', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should return 409 conflict if email already exists', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'existing@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email already registered');
+    expect(response.body.error.statusCode).toBe(409);
+  });
+
+  it('should proceed if email is new (not found in database)', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toBe('Validation passed');
+  });
+
+  it('should normalize email to lowercase when checking database', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'TEST@EXAMPLE.COM', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should not check database if validation fails', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    // Missing password - validation should fail before database check
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should return 500 for database errors
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
   });
 });
 
