@@ -1,0 +1,110 @@
+## 2026-01-15: User Table Migration Complete
+
+**Feature:** Create User table migration
+
+**Summary:**
+- Updated Prisma schema to add `password_hash` field to the User model
+- User table now includes: id (UUID, primary key), email (unique), password_hash, created_at, updated_at
+- Generated and applied migration: `20260115150251_add_password_hash_to_user`
+- Verified table structure in PostgreSQL database
+
+**Database columns:**
+- id: text (primary key)
+- email: text (unique constraint)
+- password_hash: text
+- created_at: timestamp (default: now)
+- updated_at: timestamp (auto-updated)
+
+## 2026-01-15: Unique Email Constraint Verified
+
+**Feature:** Add unique constraint on User email
+
+**Summary:**
+- Verified that the unique constraint on the email column already exists in the database
+- The initial migration (`20260115144308_init`) included `CREATE UNIQUE INDEX "users_email_key" ON "users"("email")`
+- Confirmed constraint enforcement by attempting to insert duplicate email addresses
+- Database correctly rejects duplicates with: `ERROR: duplicate key value violates unique constraint "users_email_key"`
+
+**Verification:**
+- Unique index `users_email_key` exists on the `email` column
+- Duplicate email insertions are properly rejected by PostgreSQL
+
+## 2026-01-15: Project Table Migration Complete
+
+**Feature:** Create Project table migration
+
+**Summary:**
+- Added Project model to Prisma schema with all required fields
+- Created and applied migration: `20260115152140_create_project_table`
+- Verified table exists in Docker PostgreSQL database
+
+**Database columns:**
+- id: text (UUID, primary key)
+- user_id: text (foreign key to users, cascade delete)
+- name: text (required)
+- color: text (nullable)
+- icon: text (nullable)
+- created_at: timestamp (default: now)
+- updated_at: timestamp (auto-updated)
+
+**Foreign key constraint:**
+- `projects_user_id_fkey` references `users(id)` with ON DELETE CASCADE
+
+## 2026-01-15: Foreign Key from Project to User Verified
+
+**Feature:** Add foreign key from Project to User
+
+**Summary:**
+- Verified that the foreign key constraint `projects_user_id_fkey` exists on the `user_id` column
+- Constraint references `users(id)` with ON DELETE CASCADE and ON UPDATE CASCADE
+- Tested constraint enforcement: inserting a project with non-existent user_id is rejected with appropriate error
+- Tested cascade delete behavior: deleting a user automatically deletes all associated projects
+
+**Verification results:**
+- Foreign key constraint exists: `projects_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)`
+- Invalid user_id rejected: `ERROR: insert or update on table "projects" violates foreign key constraint`
+- Cascade delete confirmed: Deleting user automatically removes associated projects
+
+## 2026-01-15: YTBEntry Table Migration Complete
+
+**Feature:** Create YTBEntry table migration
+
+**Summary:**
+- Added YTBEntry model to Prisma schema with all required fields
+- Created and applied migration: `20260115160029_create_ytb_entry_table`
+- Verified table exists in Docker PostgreSQL database
+
+**Database columns:**
+- id: text (UUID, primary key)
+- user_id: text (foreign key to users, cascade delete)
+- project_id: text (foreign key to projects, cascade delete)
+- entry_date: date (required)
+- yesterday_md: text (nullable)
+- today_md: text (nullable)
+- blockers_md: text (nullable)
+- created_at: timestamp (default: now)
+- updated_at: timestamp (auto-updated)
+
+**Foreign key constraints:**
+- `ytb_entries_user_id_fkey` references `users(id)` with ON DELETE CASCADE
+- `ytb_entries_project_id_fkey` references `projects(id)` with ON DELETE CASCADE
+
+## 2026-01-15: YTBEntry Foreign Keys Verified
+
+**Feature:** Add foreign keys on YTBEntry table
+
+**Summary:**
+- Verified that both foreign key constraints exist on the ytb_entries table
+- Confirmed cascade delete behavior is configured correctly (ON DELETE CASCADE, ON UPDATE CASCADE)
+- Tested constraint enforcement: inserting entries with invalid user_id or project_id is rejected
+- Tested cascade delete via Project: deleting a project automatically deletes associated YTB entries
+- Tested cascade delete via User: deleting a user automatically deletes associated YTB entries
+
+**Foreign key constraints verified:**
+- `ytb_entries_user_id_fkey` FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+- `ytb_entries_project_id_fkey` FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE
+
+**Verification results:**
+- Invalid foreign keys rejected: `ERROR: insert or update on table "ytb_entries" violates foreign key constraint`
+- Cascade delete via Project confirmed: Deleting project removes associated YTB entries
+- Cascade delete via User confirmed: Deleting user removes associated YTB entries (and projects)

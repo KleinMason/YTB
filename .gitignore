@@ -20,8 +20,10 @@ build/
 *.swo
 *~
 
-# Local docs / specs
+# Local docs / specs (allow prd and progress tracking)
 Project_Docs/**
+!Project_Docs/prd-sprint-2.json
+!Project_Docs/progress.txt
 
 # OS
 .DS_Store
