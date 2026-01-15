@@ -18,3 +18,22 @@ describe('GET /', () => {
     expect(typeof response.body.environment).toBe('string');
   });
 });
+
+describe('GET /api/health', () => {
+  it('should return status 200 with ok response', async () => {
+    const response = await request(app).get('/api/health');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('status', 'ok');
+  });
+
+  it('should include timestamp in response', async () => {
+    const response = await request(app).get('/api/health');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('timestamp');
+    expect(typeof response.body.timestamp).toBe('string');
+    // Verify timestamp is a valid ISO string
+    expect(() => new Date(response.body.timestamp)).not.toThrow();
+  });
+});
