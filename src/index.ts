@@ -1,9 +1,13 @@
 import 'dotenv/config';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import morgan from 'morgan';
 
 export const app: Express = express();
 const port = parseInt(process.env.PORT ?? '3000', 10);
 const nodeEnv = process.env.NODE_ENV ?? 'development';
+
+// Configure request logging middleware
+app.use(morgan('dev'));
 
 // Configure JSON body parser middleware
 app.use(express.json());
