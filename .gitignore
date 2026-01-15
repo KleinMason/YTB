@@ -21,7 +21,7 @@ build/
 *~
 
 # Local docs / specs
-Project_Docs/
+Project_Docs/**
 
 # OS
 .DS_Store
