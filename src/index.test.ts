@@ -257,3 +257,55 @@ describe('Password Hashing Utility Function', () => {
     expect(hash1).not.toBe(hash2);
   });
 });
+
+describe('JWT Library (jsonwebtoken)', () => {
+  it('should import jsonwebtoken library correctly', async () => {
+    const jwt = await import('jsonwebtoken');
+    expect(jwt).toBeDefined();
+    expect(typeof jwt.sign).toBe('function');
+    expect(typeof jwt.verify).toBe('function');
+    expect(typeof jwt.decode).toBe('function');
+  });
+
+  it('should sign a payload and generate a token', async () => {
+    const jwt = await import('jsonwebtoken');
+    const payload = { userId: 123, email: 'test@example.com' };
+    const secret = 'test-secret-key';
+    const token = jwt.sign(payload, secret);
+
+    expect(token).toBeDefined();
+    expect(typeof token).toBe('string');
+    expect(token.length).toBeGreaterThan(0);
+    // JWT tokens have 3 parts separated by dots
+    expect(token.split('.').length).toBe(3);
+  });
+
+  it('should verify a valid token and return payload', async () => {
+    const jwt = await import('jsonwebtoken');
+    const payload = { userId: 456, email: 'verify@example.com' };
+    const secret = 'test-secret-key';
+    const token = jwt.sign(payload, secret);
+
+    const decoded = jwt.verify(token, secret) as { userId: number; email: string; iat: number };
+    expect(decoded).toBeDefined();
+    expect(decoded.userId).toBe(456);
+    expect(decoded.email).toBe('verify@example.com');
+    expect(decoded.iat).toBeDefined(); // Issued at timestamp
+  });
+
+  it('should throw error for invalid token', async () => {
+    const jwt = await import('jsonwebtoken');
+    const secret = 'test-secret-key';
+    const invalidToken = 'invalid.token.here';
+
+    expect(() => jwt.verify(invalidToken, secret)).toThrow();
+  });
+
+  it('should throw error for token signed with different secret', async () => {
+    const jwt = await import('jsonwebtoken');
+    const payload = { userId: 789 };
+    const token = jwt.sign(payload, 'secret-one');
+
+    expect(() => jwt.verify(token, 'secret-two')).toThrow();
+  });
+});
