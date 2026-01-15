@@ -35,3 +35,26 @@ export function signToken(
     { expiresIn }
   );
 }
+
+/**
+ * Decoded JWT payload type
+ */
+export interface JwtPayload {
+  userId: string;
+  iat: number;
+  exp: number;
+}
+
+/**
+ * Verify and decode a JWT token
+ * @param token - The JWT token string to verify
+ * @returns Decoded payload containing userId, iat, and exp
+ * @throws Error if token is invalid, expired, or JWT_SECRET is not set
+ */
+export function verifyToken(token: string): JwtPayload {
+  const secret = getJwtSecret();
+  
+  const decoded = jwt.verify(token, secret);
+  
+  return decoded as JwtPayload;
+}
