@@ -14,3 +14,17 @@
 - password_hash: text
 - created_at: timestamp (default: now)
 - updated_at: timestamp (auto-updated)
+
+## 2026-01-15: Unique Email Constraint Verified
+
+**Feature:** Add unique constraint on User email
+
+**Summary:**
+- Verified that the unique constraint on the email column already exists in the database
+- The initial migration (`20260115144308_init`) included `CREATE UNIQUE INDEX "users_email_key" ON "users"("email")`
+- Confirmed constraint enforcement by attempting to insert duplicate email addresses
+- Database correctly rejects duplicates with: `ERROR: duplicate key value violates unique constraint "users_email_key"`
+
+**Verification:**
+- Unique index `users_email_key` exists on the `email` column
+- Duplicate email insertions are properly rejected by PostgreSQL
