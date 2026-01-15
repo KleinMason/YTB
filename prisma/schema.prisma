@@ -14,25 +14,43 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
   projects     Project[]
+  ytbEntries   YTBEntry[]
 
   @@map("users")
 }
 
 model Project {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  name      String
-  color     String?
-  icon      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String     @id @default(uuid())
+  userId     String     @map("user_id")
+  name       String
+  color      String?
+  icon       String?
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ytbEntries YTBEntry[]
 
   @@map("projects")
+}
+
+model YTBEntry {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  projectId  String   @map("project_id")
+  entryDate  DateTime @map("entry_date") @db.Date
+  yesterdayMd String?  @map("yesterday_md")
+  todayMd    String?  @map("today_md")
+  blockersMd String?  @map("blockers_md")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ytb_entries")
 }
