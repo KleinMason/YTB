@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+import { describe, expect, it } from 'vitest';
 import { app } from './index.js';
 
 describe('GET /', () => {
@@ -307,6 +307,9 @@ describe('JWT Library (jsonwebtoken)', () => {
     const token = jwt.sign(payload, 'secret-one');
 
     expect(() => jwt.verify(token, 'secret-two')).toThrow();
+  });
+});
+
 describe('Password Verification Utility Function', () => {
   it('should return true for matching password', async () => {
     const { hashPassword, verifyPassword } = await import('./utils/password.js');
