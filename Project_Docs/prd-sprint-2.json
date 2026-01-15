@@ -30,7 +30,7 @@
       "Run migration",
       "Verify table exists in database"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "database",
