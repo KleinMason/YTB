@@ -21,7 +21,7 @@ build/
 *~
 
 # Local docs / specs
-Project_Docs/
+Project_Docs/**
 
 # OS
 .DS_Store
@@ -37,3 +37,5 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+
+/src/generated/prisma
