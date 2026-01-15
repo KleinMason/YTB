@@ -451,3 +451,115 @@ describe('JWT Signing Utility Function', () => {
     expect(() => jwt.verify(token, 'wrong-secret')).toThrow();
   });
 });
+
+describe('JWT Verification Utility Function', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should verify and decode a valid token', async () => {
+    const { signToken, verifyToken } = await import('./utils/jwt.js');
+    const userId = 'user-verify-123';
+    const token = signToken(userId);
+
+    const decoded = verifyToken(token);
+
+    expect(decoded).toBeDefined();
+    expect(decoded.userId).toBe(userId);
+  });
+
+  it('should return decoded payload with userId', async () => {
+    const { signToken, verifyToken } = await import('./utils/jwt.js');
+    const userId = 'test-user-id-456';
+    const token = signToken(userId);
+
+    const decoded = verifyToken(token);
+
+    expect(decoded).toHaveProperty('userId');
+    expect(decoded.userId).toBe(userId);
+  });
+
+  it('should return decoded payload with iat (issued at) timestamp', async () => {
+    const { signToken, verifyToken } = await import('./utils/jwt.js');
+    const userId = 'user-iat-test';
+    const token = signToken(userId);
+
+    const decoded = verifyToken(token);
+
+    expect(decoded).toHaveProperty('iat');
+    expect(typeof decoded.iat).toBe('number');
+    // iat should be close to current time
+    const now = Math.floor(Date.now() / 1000);
+    expect(decoded.iat).toBeLessThanOrEqual(now);
+    expect(decoded.iat).toBeGreaterThan(now - 10);
+  });
+
+  it('should return decoded payload with exp (expiration) timestamp', async () => {
+    const { signToken, verifyToken } = await import('./utils/jwt.js');
+    const userId = 'user-exp-test';
+    const token = signToken(userId);
+
+    const decoded = verifyToken(token);
+
+    expect(decoded).toHaveProperty('exp');
+    expect(typeof decoded.exp).toBe('number');
+    // exp should be 24 hours from iat by default
+    expect(decoded.exp - decoded.iat).toBe(86400);
+  });
+
+  it('should throw error for invalid token', async () => {
+    const { verifyToken } = await import('./utils/jwt.js');
+    const invalidToken = 'invalid.token.here';
+
+    expect(() => verifyToken(invalidToken)).toThrow();
+  });
+
+  it('should throw error for malformed token', async () => {
+    const { verifyToken } = await import('./utils/jwt.js');
+    const malformedToken = 'not-a-valid-jwt';
+
+    expect(() => verifyToken(malformedToken)).toThrow();
+  });
+
+  it('should throw error for token signed with different secret', async () => {
+    const jwt = await import('jsonwebtoken');
+    const { verifyToken } = await import('./utils/jwt.js');
+    
+    // Sign with a different secret
+    const tokenWithDifferentSecret = jwt.sign({ userId: 'user-123' }, 'different-secret');
+
+    expect(() => verifyToken(tokenWithDifferentSecret)).toThrow();
+  });
+
+  it('should throw error if JWT_SECRET is not set', async () => {
+    const jwt = await import('jsonwebtoken');
+    delete process.env.JWT_SECRET;
+    
+    // Create a token with a known secret for testing
+    const token = jwt.sign({ userId: 'user-123' }, 'some-secret');
+    
+    const jwtModule = await import('./utils/jwt.js');
+    
+    expect(() => jwtModule.verifyToken(token)).toThrow('JWT_SECRET environment variable is not set');
+  });
+
+  it('should throw error for expired token', async () => {
+    const jwt = await import('jsonwebtoken');
+    const { verifyToken } = await import('./utils/jwt.js');
+    
+    // Create a token that expired 1 second ago
+    const expiredToken = jwt.sign(
+      { userId: 'user-expired' },
+      'test-jwt-secret-key-for-testing',
+      { expiresIn: '-1s' }
+    );
+
+    expect(() => verifyToken(expiredToken)).toThrow();
+  });
+});
