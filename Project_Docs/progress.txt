@@ -1,0 +1,16 @@
+## 2026-01-15: User Table Migration Complete
+
+**Feature:** Create User table migration
+
+**Summary:**
+- Updated Prisma schema to add `password_hash` field to the User model
+- User table now includes: id (UUID, primary key), email (unique), password_hash, created_at, updated_at
+- Generated and applied migration: `20260115150251_add_password_hash_to_user`
+- Verified table structure in PostgreSQL database
+
+**Database columns:**
+- id: text (primary key)
+- email: text (unique constraint)
+- password_hash: text
+- created_at: timestamp (default: now)
+- updated_at: timestamp (auto-updated)
