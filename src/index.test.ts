@@ -72,3 +72,55 @@ describe('JSON Body Parsing Middleware', () => {
     expect(response.body.received).toEqual({});
   });
 });
+
+describe('Error Handling Middleware', () => {
+  it('should catch errors and return consistent error response format', async () => {
+    const response = await request(app).get('/api/test-error');
+
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error).toHaveProperty('message');
+    expect(response.body.error).toHaveProperty('statusCode');
+    expect(response.body.error).toHaveProperty('timestamp');
+    expect(response.body.error).toHaveProperty('path');
+  });
+
+  it('should return error message in response', async () => {
+    const response = await request(app).get('/api/test-error');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.message).toBe('Test error');
+  });
+
+  it('should preserve custom status codes', async () => {
+    const response = await request(app).post('/api/test-error');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.statusCode).toBe(400);
+    expect(response.body.error.message).toBe('Test error with message');
+  });
+
+  it('should include timestamp in error response', async () => {
+    const response = await request(app).get('/api/test-error');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toHaveProperty('timestamp');
+    expect(typeof response.body.error.timestamp).toBe('string');
+    // Verify timestamp is a valid ISO string
+    expect(() => new Date(response.body.error.timestamp)).not.toThrow();
+  });
+
+  it('should include request path in error response', async () => {
+    const response = await request(app).get('/api/test-error');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.path).toBe('/api/test-error');
+  });
+
+  it('should return 500 status code for errors without statusCode', async () => {
+    const response = await request(app).get('/api/test-error');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.statusCode).toBe(500);
+  });
+});
