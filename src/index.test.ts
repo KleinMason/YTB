@@ -199,3 +199,61 @@ describe('Password Hashing Library (bcrypt)', () => {
     expect(isValid2).toBe(true);
   });
 });
+
+describe('Password Hashing Utility Function', () => {
+  it('should hash password using utility function', async () => {
+    const { hashPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    const hash = await hashPassword(password);
+
+    expect(hash).toBeDefined();
+    expect(typeof hash).toBe('string');
+    expect(hash).not.toBe(password);
+    expect(hash.length).toBeGreaterThan(0);
+    // bcrypt hashes start with $2a$, $2b$, or $2y$
+    expect(hash).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('should generate different hash from input password', async () => {
+    const { hashPassword } = await import('./utils/password.js');
+    const password = 'mySecurePassword456';
+    const hash = await hashPassword(password);
+
+    // Verify hash is different from original password
+    expect(hash).not.toBe(password);
+    expect(hash).not.toContain(password);
+    expect(hash.length).toBeGreaterThan(password.length);
+  });
+
+  it('should use appropriate salt rounds (default 10)', async () => {
+    const { hashPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    const hash = await hashPassword(password);
+
+    // Verify hash format indicates proper salt rounds
+    expect(hash).toMatch(/^\$2[aby]\$\d{2}\$/);
+    // Extract salt rounds from hash (format: $2a$10$...)
+    const saltRounds = parseInt(hash.split('$')[2], 10);
+    expect(saltRounds).toBeGreaterThanOrEqual(10);
+  });
+
+  it('should accept custom salt rounds', async () => {
+    const { hashPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    const hash = await hashPassword(password, 12);
+
+    // Verify hash format indicates custom salt rounds
+    const saltRounds = parseInt(hash.split('$')[2], 10);
+    expect(saltRounds).toBe(12);
+  });
+
+  it('should generate different hashes for same password', async () => {
+    const { hashPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    const hash1 = await hashPassword(password);
+    const hash2 = await hashPassword(password);
+
+    // Each hash should be unique due to salt
+    expect(hash1).not.toBe(hash2);
+  });
+});
