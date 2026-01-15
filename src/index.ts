@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import morgan from 'morgan';
 import { authMiddleware, AuthenticatedRequest } from './middleware/auth.js';
+import { prisma } from './db/prisma.js';
 
 export const app: Express = express();
 const port = parseInt(process.env.PORT ?? '3000', 10);
@@ -85,49 +86,68 @@ function isValidPassword(password: string): { valid: boolean; errors: string[] }
 }
 
 // POST /api/auth/register - User registration endpoint
-app.post('/api/auth/register', (req: Request, res: Response) => {
-  const { email, password } = req.body;
+app.post('/api/auth/register', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password } = req.body;
 
-  // Validate required fields
-  if (!email || !password) {
-    res.status(400).json({
-      error: {
-        message: 'Email and password are required',
-        statusCode: 400,
-      },
+    // Validate required fields
+    if (!email || !password) {
+      res.status(400).json({
+        error: {
+          message: 'Email and password are required',
+          statusCode: 400,
+        },
+      });
+      return;
+    }
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      res.status(400).json({
+        error: {
+          message: 'Invalid email format',
+          statusCode: 400,
+        },
+      });
+      return;
+    }
+
+    // Validate password requirements
+    const passwordValidation = isValidPassword(password);
+    if (!passwordValidation.valid) {
+      res.status(400).json({
+        error: {
+          message: 'Password does not meet requirements',
+          statusCode: 400,
+          details: passwordValidation.errors,
+        },
+      });
+      return;
+    }
+
+    // Check if email already exists in database
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
     });
-    return;
-  }
 
-  // Validate email format
-  if (!isValidEmail(email)) {
-    res.status(400).json({
-      error: {
-        message: 'Invalid email format',
-        statusCode: 400,
-      },
+    if (existingUser) {
+      res.status(409).json({
+        error: {
+          message: 'Email already registered',
+          statusCode: 409,
+        },
+      });
+      return;
+    }
+
+    // For now, return success (user creation will be added in a separate feature)
+    res.status(201).json({
+      message: 'Validation passed',
+      email,
     });
-    return;
+  } catch (error) {
+    next(error);
   }
-
-  // Validate password requirements
-  const passwordValidation = isValidPassword(password);
-  if (!passwordValidation.valid) {
-    res.status(400).json({
-      error: {
-        message: 'Password does not meet requirements',
-        statusCode: 400,
-        details: passwordValidation.errors,
-      },
-    });
-    return;
-  }
-
-  // For now, return success (database integration will be added in a separate feature)
-  res.status(201).json({
-    message: 'Validation passed',
-    email,
-  });
 });
 
 // Global error handling middleware
