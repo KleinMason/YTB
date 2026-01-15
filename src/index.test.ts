@@ -37,3 +37,41 @@ describe('GET /api/health', () => {
     expect(() => new Date(response.body.timestamp)).not.toThrow();
   });
 });
+
+describe('CORS middleware', () => {
+  it('should include Access-Control-Allow-Origin header in responses', async () => {
+    const response = await request(app)
+      .get('/api/health')
+      .set('Origin', 'http://localhost:5173');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+  });
+
+  it('should handle preflight OPTIONS requests', async () => {
+    const response = await request(app)
+      .options('/api/health')
+      .set('Origin', 'http://localhost:5173')
+      .set('Access-Control-Request-Method', 'GET');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+    expect(response.headers['access-control-allow-methods']).toBeDefined();
+  });
+
+  it('should allow cross-origin requests from frontend origin', async () => {
+    const response = await request(app)
+      .get('/api/health')
+      .set('Origin', 'http://localhost:5173');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+});
