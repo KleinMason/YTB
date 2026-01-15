@@ -257,3 +257,62 @@ describe('Password Hashing Utility Function', () => {
     expect(hash1).not.toBe(hash2);
   });
 });
+
+describe('Password Verification Utility Function', () => {
+  it('should return true for matching password', async () => {
+    const { hashPassword, verifyPassword } = await import('./utils/password.js');
+    const password = 'correctPassword123';
+    const hash = await hashPassword(password);
+
+    const result = await verifyPassword(password, hash);
+
+    expect(result).toBe(true);
+  });
+
+  it('should return false for non-matching password', async () => {
+    const { hashPassword, verifyPassword } = await import('./utils/password.js');
+    const password = 'correctPassword123';
+    const wrongPassword = 'wrongPassword456';
+    const hash = await hashPassword(password);
+
+    const result = await verifyPassword(wrongPassword, hash);
+
+    expect(result).toBe(false);
+  });
+
+  it('should verify password against different hashes of same password', async () => {
+    const { hashPassword, verifyPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    
+    // Generate two different hashes for the same password
+    const hash1 = await hashPassword(password);
+    const hash2 = await hashPassword(password);
+
+    // Both should verify correctly
+    const result1 = await verifyPassword(password, hash1);
+    const result2 = await verifyPassword(password, hash2);
+
+    expect(result1).toBe(true);
+    expect(result2).toBe(true);
+  });
+
+  it('should return false for empty password', async () => {
+    const { hashPassword, verifyPassword } = await import('./utils/password.js');
+    const password = 'testPassword123';
+    const hash = await hashPassword(password);
+
+    const result = await verifyPassword('', hash);
+
+    expect(result).toBe(false);
+  });
+
+  it('should handle passwords with special characters', async () => {
+    const { hashPassword, verifyPassword } = await import('./utils/password.js');
+    const password = 'P@$$w0rd!#%&*()_+-=[]{}|;:,.<>?';
+    const hash = await hashPassword(password);
+
+    const result = await verifyPassword(password, hash);
+
+    expect(result).toBe(true);
+  });
+});
