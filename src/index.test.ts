@@ -565,6 +565,174 @@ describe('JWT Verification Utility Function', () => {
   });
 });
 
+describe('POST /api/auth/register', () => {
+  it('should accept email and password in request body', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid input
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 400 if email is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if both email and password are missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({})
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should validate email format and return 400 for invalid email', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalid-email', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should return 400 for email without @ symbol', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalidemail.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should return 400 for email without domain', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should accept valid email formats', async () => {
+    const validEmails = [
+      'test@example.com',
+      'user.name@domain.org',
+      'user+tag@example.co.uk',
+    ];
+
+    for (const email of validEmails) {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ email, password: 'Password123' })
+        .set('Content-Type', 'application/json');
+
+      expect(response.status).not.toBe(400);
+    }
+  });
+
+  it('should return 400 for password less than 8 characters', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Pass1' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must be at least 8 characters long');
+  });
+
+  it('should return 400 for password without uppercase letter', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one uppercase letter');
+  });
+
+  it('should return 400 for password without lowercase letter', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'PASSWORD123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one lowercase letter');
+  });
+
+  it('should return 400 for password without number', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'PasswordABC' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one number');
+  });
+
+  it('should return multiple password validation errors', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'abc' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details.length).toBeGreaterThan(1);
+  });
+
+  it('should accept password meeting all requirements', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'ValidPass123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid password
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 201 status for successful validation', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+  });
+});
+
 describe('Authentication Middleware', () => {
   const originalEnv = process.env;
 

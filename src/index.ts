@@ -42,6 +42,94 @@ app.get('/api/test-auth', authMiddleware, (req: AuthenticatedRequest, res) => {
   res.json({ userId: req.user?.userId, authenticated: true });
 });
 
+// Email validation regex
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Password validation requirements
+const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Validate email format
+ */
+function isValidEmail(email: string): boolean {
+  return emailRegex.test(email);
+}
+
+/**
+ * Validate password requirements
+ * - Minimum 8 characters
+ * - At least one uppercase letter
+ * - At least one lowercase letter
+ * - At least one number
+ */
+function isValidPassword(password: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    errors.push(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// POST /api/auth/register - User registration endpoint
+app.post('/api/auth/register', (req: Request, res: Response) => {
+  const { email, password } = req.body;
+
+  // Validate required fields
+  if (!email || !password) {
+    res.status(400).json({
+      error: {
+        message: 'Email and password are required',
+        statusCode: 400,
+      },
+    });
+    return;
+  }
+
+  // Validate email format
+  if (!isValidEmail(email)) {
+    res.status(400).json({
+      error: {
+        message: 'Invalid email format',
+        statusCode: 400,
+      },
+    });
+    return;
+  }
+
+  // Validate password requirements
+  const passwordValidation = isValidPassword(password);
+  if (!passwordValidation.valid) {
+    res.status(400).json({
+      error: {
+        message: 'Password does not meet requirements',
+        statusCode: 400,
+        details: passwordValidation.errors,
+      },
+    });
+    return;
+  }
+
+  // For now, return success (database integration will be added in a separate feature)
+  res.status(201).json({
+    message: 'Validation passed',
+    email,
+  });
+});
+
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   // Determine status code
