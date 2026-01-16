@@ -1281,3 +1281,70 @@ describe('Authentication Middleware', () => {
     expect(response.body.error.message).toBe('Invalid or expired token');
   });
 });
+
+describe('POST /api/auth/login - Validation', () => {
+  it('should accept email and password in request body', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid input (will return 501 for now since not fully implemented)
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 400 if email is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if both email and password are missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({})
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if email is empty string', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: '', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is empty string', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: '' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+});

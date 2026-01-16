@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { registerUser } from '../services/auth.service.js';
+import { registerUser, loginUser } from '../services/auth.service.js';
 
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -19,6 +19,23 @@ export async function register(req: Request, res: Response, next: NextFunction):
       user: result.user,
       token: result.token,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, password } = req.body;
+
+    const result = await loginUser({ email, password });
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
   } catch (error) {
     next(error);
   }
