@@ -14,3 +14,63 @@
 ## Status
 
 Early scaffold / WIP.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+)
+- Docker and Docker Compose
+
+### Database Setup
+
+The project uses **PostgreSQL 16** with **Prisma ORM**.
+
+1. **Copy environment file**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Default credentials are pre-configured for local development.
+
+2. **Start the database**
+
+   ```bash
+   docker-compose up -d
+   ```
+
+   This starts a PostgreSQL container (`ytb-postgres`) on port 5432.
+
+3. **Run migrations**
+
+   ```bash
+   npm run db:migrate
+   ```
+
+4. **Generate Prisma client**
+   ```bash
+   npm run db:generate
+   ```
+
+### Database Commands
+
+| Command                     | Description                             |
+| --------------------------- | --------------------------------------- |
+| `npm run db:migrate`        | Apply pending migrations                |
+| `npm run db:migrate:create` | Create a new migration without applying |
+| `npm run db:migrate:deploy` | Deploy migrations (production)          |
+| `npm run db:migrate:status` | Check migration status                  |
+| `npm run db:generate`       | Regenerate Prisma client                |
+
+### Stopping the Database
+
+```bash
+docker-compose down
+```
+
+To remove the data volume as well:
+
+```bash
+docker-compose down -v
+```
