@@ -1,0 +1,103 @@
+import { prisma } from '../db/prisma.js';
+import { hashPassword } from '../utils/password.js';
+import { isValidEmail, isValidPassword } from './validation.service.js';
+
+export interface RegisterUserInput {
+  email: string;
+  password: string;
+}
+
+export interface RegisterUserResult {
+  success: true;
+  user: {
+    id: string;
+    email: string;
+    createdAt: Date;
+  };
+}
+
+export interface RegisterUserError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+    details?: string[];
+  };
+}
+
+export type RegisterUserResponse = RegisterUserResult | RegisterUserError;
+
+export async function registerUser(input: RegisterUserInput): Promise<RegisterUserResponse> {
+  const { email, password } = input;
+
+  // Validate required fields
+  if (!email || !password) {
+    return {
+      success: false,
+      error: {
+        message: 'Email and password are required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Validate email format
+  if (!isValidEmail(email)) {
+    return {
+      success: false,
+      error: {
+        message: 'Invalid email format',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Validate password requirements
+  const passwordValidation = isValidPassword(password);
+  if (!passwordValidation.valid) {
+    return {
+      success: false,
+      error: {
+        message: 'Password does not meet requirements',
+        statusCode: 400,
+        details: passwordValidation.errors,
+      },
+    };
+  }
+
+  // Check if email already exists in database
+  const normalizedEmail = email.toLowerCase();
+  const existingUser = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+
+  if (existingUser) {
+    return {
+      success: false,
+      error: {
+        message: 'Email already registered',
+        statusCode: 409,
+      },
+    };
+  }
+
+  // Hash password using utility function
+  const passwordHash = await hashPassword(password);
+
+  // Create user in database
+  const user = await prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      passwordHash,
+    },
+  });
+
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  };
+}
