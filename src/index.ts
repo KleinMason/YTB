@@ -3,6 +3,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import morgan from 'morgan';
 import { authMiddleware, AuthenticatedRequest } from './middleware/auth.js';
 import { prisma } from './db/prisma.js';
+import { hashPassword } from './utils/password.js';
 
 export const app: Express = express();
 const port = parseInt(process.env.PORT ?? '3000', 10);
@@ -140,10 +141,25 @@ app.post('/api/auth/register', async (req: Request, res: Response, next: NextFun
       return;
     }
 
-    // For now, return success (user creation will be added in a separate feature)
+    // Hash password using utility function
+    const passwordHash = await hashPassword(password);
+
+    // Create user in database
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        passwordHash,
+      },
+    });
+
+    // Return success response (exclude password hash)
     res.status(201).json({
-      message: 'Validation passed',
-      email,
+      message: 'User created successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
     });
   } catch (error) {
     next(error);
