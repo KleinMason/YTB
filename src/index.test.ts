@@ -1348,3 +1348,103 @@ describe('POST /api/auth/login - Validation', () => {
     expect(response.body.error.message).toBe('Email and password are required');
   });
 });
+
+describe('POST /api/auth/login - Finds user by email', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should query database for user by email', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should return 401 if user not found', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'nonexistent@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid credentials');
+  });
+
+  it('should proceed if user exists', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'existing@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 401 since user exists (will return 501 for now, password verification not implemented)
+    expect(response.status).not.toBe(401);
+  });
+
+  it('should normalize email to lowercase when querying database', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'TEST@EXAMPLE.COM', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should not query database if validation fails', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    // Missing password - validation should fail before database query
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should return 500 for database errors
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+  });
+});

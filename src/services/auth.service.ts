@@ -58,7 +58,24 @@ export async function loginUser(input: LoginUserInput): Promise<LoginUserRespons
     };
   }
 
-  // Placeholder for future implementation (user lookup, password verification, token generation)
+  // Query database for user by email (normalized to lowercase)
+  const normalizedEmail = email.toLowerCase();
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+
+  // Return 401 if user not found
+  if (!user) {
+    return {
+      success: false,
+      error: {
+        message: 'Invalid credentials',
+        statusCode: 401,
+      },
+    };
+  }
+
+  // Placeholder for password verification and token generation (next features)
   return {
     success: false,
     error: {
