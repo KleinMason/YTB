@@ -36,6 +36,12 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       });
       return;
     }
+
+    res.status(200).json({
+      message: 'Login successful',
+      user: result.user,
+      token: result.token,
+    });
   } catch (error) {
     next(error);
   }

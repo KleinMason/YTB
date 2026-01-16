@@ -1479,6 +1479,11 @@ describe('POST /api/auth/login - Finds user by email', () => {
 describe('POST /api/auth/login - Verifies password', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
   });
 
   it('should compare provided password with stored hash', async () => {
@@ -1537,7 +1542,150 @@ describe('POST /api/auth/login - Verifies password', () => {
       .send({ email: 'test@example.com', password: 'CorrectPassword123' })
       .set('Content-Type', 'application/json');
 
-    // Should not return 401 since password is correct (will return 501 for now - token return not implemented)
-    expect(response.status).not.toBe(401);
+    // Should return 200 since password is correct
+    expect(response.status).toBe(200);
+  });
+});
+
+describe('Login endpoint returns JWT token', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should generate JWT for authenticated user', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('token');
+  });
+
+  it('should return token in response body with valid JWT format', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    // JWT tokens have 3 parts separated by dots
+    const token = response.body.token;
+    expect(typeof token).toBe('string');
+    expect(token.split('.')).toHaveLength(3);
+  });
+
+  it('should return valid JWT token that can be verified', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { verifyToken } = await import('./utils/jwt.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    const decoded = verifyToken(response.body.token);
+    expect(decoded).toHaveProperty('userId');
+    expect(decoded).toHaveProperty('iat');
+    expect(decoded).toHaveProperty('exp');
+  });
+
+  it('should return token containing correct user id', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { verifyToken } = await import('./utils/jwt.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'specific-user-id-12345',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    const decoded = verifyToken(response.body.token);
+    expect(decoded.userId).toBe('specific-user-id-12345');
+  });
+
+  it('should not return token when validation fails', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: '', password: '' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when user not found', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'nonexistent@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when password is incorrect', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'WrongPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).not.toHaveProperty('token');
   });
 });

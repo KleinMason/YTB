@@ -34,6 +34,15 @@ export interface LoginUserInput {
   password: string;
 }
 
+export interface LoginUserResult {
+  success: true;
+  user: {
+    id: string;
+    email: string;
+  };
+  token: string;
+}
+
 export interface LoginUserError {
   success: false;
   error: {
@@ -42,7 +51,7 @@ export interface LoginUserError {
   };
 }
 
-export type LoginUserResponse = LoginUserError;
+export type LoginUserResponse = LoginUserResult | LoginUserError;
 
 export async function loginUser(input: LoginUserInput): Promise<LoginUserResponse> {
   const { email, password } = input;
@@ -89,13 +98,16 @@ export async function loginUser(input: LoginUserInput): Promise<LoginUserRespons
     };
   }
 
-  // Placeholder for token generation (next feature)
+  // Generate JWT token for authenticated user
+  const token = signToken(user.id);
+
   return {
-    success: false,
-    error: {
-      message: 'Not implemented',
-      statusCode: 501,
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
     },
+    token,
   };
 }
 
