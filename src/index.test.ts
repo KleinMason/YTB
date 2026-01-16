@@ -13,6 +13,32 @@ vi.mock('./db/prisma.js', () => ({
   },
 }));
 
+// Mock password utilities for login tests - use vi.hoisted because vi.mock is hoisted
+const { mockVerifyPassword, setActualVerifyPassword } = vi.hoisted(() => {
+  let actualImpl: ((password: string, hash: string) => Promise<boolean>) | null = null;
+  const mock = vi.fn((password: string, hash: string) => {
+    // Call the actual implementation by default
+    if (actualImpl) {
+      return actualImpl(password, hash);
+    }
+    return Promise.resolve(false);
+  });
+  return {
+    mockVerifyPassword: mock,
+    setActualVerifyPassword: (impl: typeof actualImpl) => { actualImpl = impl; },
+  };
+});
+
+vi.mock('./utils/password.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./utils/password.js')>();
+  // Store reference to actual implementation for passthrough
+  setActualVerifyPassword(actual.verifyPassword);
+  return {
+    ...actual,
+    verifyPassword: mockVerifyPassword,
+  };
+});
+
 describe('GET /', () => {
   it('should return API status message', async () => {
     const response = await request(app).get('/');
@@ -1397,13 +1423,14 @@ describe('POST /api/auth/login - Finds user by email', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    mockVerifyPassword.mockResolvedValue(true);
 
     const response = await request(app)
       .post('/api/auth/login')
       .send({ email: 'existing@example.com', password: 'Password123' })
       .set('Content-Type', 'application/json');
 
-    // Should not return 401 since user exists (will return 501 for now, password verification not implemented)
+    // Should not return 401 since user exists and password is correct (will return 501 for now - token return not implemented)
     expect(response.status).not.toBe(401);
   });
 
@@ -1446,5 +1473,71 @@ describe('POST /api/auth/login - Finds user by email', () => {
     // Should return 500 for database errors
     expect(response.status).toBe(500);
     expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/login - Verifies password', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should compare provided password with stored hash', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(mockVerifyPassword).toHaveBeenCalledWith('Password123', '$2b$10$hashedpasswordvalue');
+  });
+
+  it('should return 401 if password is incorrect', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'WrongPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid credentials');
+  });
+
+  it('should proceed if password matches', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'CorrectPassword123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 401 since password is correct (will return 501 for now - token return not implemented)
+    expect(response.status).not.toBe(401);
   });
 });
