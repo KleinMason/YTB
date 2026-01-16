@@ -29,6 +29,45 @@ export interface RegisterUserError {
 
 export type RegisterUserResponse = RegisterUserResult | RegisterUserError;
 
+export interface LoginUserInput {
+  email: string;
+  password: string;
+}
+
+export interface LoginUserError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type LoginUserResponse = LoginUserError;
+
+export async function loginUser(input: LoginUserInput): Promise<LoginUserResponse> {
+  const { email, password } = input;
+
+  // Validate required fields
+  if (!email || !password) {
+    return {
+      success: false,
+      error: {
+        message: 'Email and password are required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Placeholder for future implementation (user lookup, password verification, token generation)
+  return {
+    success: false,
+    error: {
+      message: 'Not implemented',
+      statusCode: 501,
+    },
+  };
+}
+
 export async function registerUser(input: RegisterUserInput): Promise<RegisterUserResponse> {
   const { email, password } = input;
 
