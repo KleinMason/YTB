@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './index.js';
-import { signToken } from './utils/jwt.js';
+import { signToken, verifyToken } from './utils/jwt.js';
 
 // Mock prisma client
 vi.mock('./db/prisma.js', () => ({
@@ -576,7 +576,10 @@ describe('JWT Verification Utility Function', () => {
 });
 
 describe('POST /api/auth/register', () => {
+  const originalEnv = process.env;
+
   beforeEach(async () => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.user.create).mockResolvedValue({
@@ -589,6 +592,7 @@ describe('POST /api/auth/register', () => {
   });
 
   afterEach(() => {
+    process.env = originalEnv;
     vi.clearAllMocks();
   });
 
@@ -771,8 +775,15 @@ describe('POST /api/auth/register', () => {
 });
 
 describe('POST /api/auth/register - Email exists check', () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
   });
 
   it('should query database for existing email', async () => {
@@ -887,8 +898,15 @@ describe('POST /api/auth/register - Email exists check', () => {
 });
 
 describe('POST /api/auth/register - Creates user in database', () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
   });
 
   it('should hash password using utility function', async () => {
@@ -1013,6 +1031,144 @@ describe('POST /api/auth/register - Creates user in database', () => {
 
     expect(response.status).toBe(500);
     expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/register - Returns JWT token', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should generate JWT for new user', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const createdUser = {
+      id: 'new-user-id-123',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveProperty('token');
+    expect(typeof response.body.token).toBe('string');
+  });
+
+  it('should return token in response body', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const createdUser = {
+      id: 'user-with-token-id',
+      email: 'tokenuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'tokenuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    // Token should be at the top level of the response body
+    expect(response.body.token).toBeDefined();
+    // Token should be a JWT (3 parts separated by dots)
+    const tokenParts = response.body.token.split('.');
+    expect(tokenParts.length).toBe(3);
+  });
+
+  it('should return valid JWT token that can be verified', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const createdUser = {
+      id: 'valid-token-user-id',
+      email: 'validtoken@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'validtoken@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+
+    // Token should be verifiable
+    const decoded = verifyToken(response.body.token);
+    expect(decoded).toHaveProperty('userId', 'valid-token-user-id');
+    expect(decoded).toHaveProperty('iat');
+    expect(decoded).toHaveProperty('exp');
+  });
+
+  it('should return token containing correct user id', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const createdUser = {
+      id: 'specific-user-id-456',
+      email: 'specificid@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'specificid@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+
+    const decoded = verifyToken(response.body.token);
+    expect(decoded.userId).toBe('specific-user-id-456');
+  });
+
+  it('should not return token when validation fails', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalid-email', password: 'short' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when email already exists', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'existing@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(409);
+    expect(response.body).not.toHaveProperty('token');
   });
 });
 

@@ -17,6 +17,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
     res.status(201).json({
       message: 'User created successfully',
       user: result.user,
+      token: result.token,
     });
   } catch (error) {
     next(error);
