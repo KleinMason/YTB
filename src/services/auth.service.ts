@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma.js';
-import { hashPassword } from '../utils/password.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { isValidEmail, isValidPassword } from './validation.service.js';
 
@@ -75,7 +75,21 @@ export async function loginUser(input: LoginUserInput): Promise<LoginUserRespons
     };
   }
 
-  // Placeholder for password verification and token generation (next features)
+  // Verify password against stored hash
+  const isPasswordValid = await verifyPassword(password, user.passwordHash);
+
+  // Return 401 if password is incorrect
+  if (!isPasswordValid) {
+    return {
+      success: false,
+      error: {
+        message: 'Invalid credentials',
+        statusCode: 401,
+      },
+    };
+  }
+
+  // Placeholder for token generation (next feature)
   return {
     success: false,
     error: {
