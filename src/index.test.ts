@@ -1689,3 +1689,146 @@ describe('Login endpoint returns JWT token', () => {
     expect(response.body).not.toHaveProperty('token');
   });
 });
+
+describe('GET /api/auth/me', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'test-secret-key';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should apply authentication middleware and require valid token', async () => {
+    const response = await request(app).get('/api/auth/me');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 for invalid token', async () => {
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer invalid.token.here');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return current user data from token', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const userEmail = 'testuser@example.com';
+    const userCreatedAt = new Date('2024-01-01T00:00:00.000Z');
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: userEmail,
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: userCreatedAt,
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('user');
+    expect(response.body.user).toHaveProperty('id', userId);
+    expect(response.body.user).toHaveProperty('email', userEmail);
+    expect(response.body.user).toHaveProperty('createdAt');
+  });
+
+  it('should exclude password hash from response', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: 'testuser@example.com',
+      passwordHash: '$2b$10$secrethashedpassword',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).not.toHaveProperty('passwordHash');
+    expect(response.body.user).not.toHaveProperty('password');
+  });
+
+  it('should return 404 if user not found in database', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'nonexistent-user-id';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('User not found');
+  });
+
+  it('should query database with user id from token', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'specific-user-id-abc123';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: 'testuser@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: userId },
+    });
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id';
+
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(500);
+  });
+});

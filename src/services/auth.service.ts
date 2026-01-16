@@ -53,6 +53,25 @@ export interface LoginUserError {
 
 export type LoginUserResponse = LoginUserResult | LoginUserError;
 
+export interface GetCurrentUserResult {
+  success: true;
+  user: {
+    id: string;
+    email: string;
+    createdAt: Date;
+  };
+}
+
+export interface GetCurrentUserError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type GetCurrentUserResponse = GetCurrentUserResult | GetCurrentUserError;
+
 export async function loginUser(input: LoginUserInput): Promise<LoginUserResponse> {
   const { email, password } = input;
 
@@ -187,5 +206,33 @@ export async function registerUser(input: RegisterUserInput): Promise<RegisterUs
       createdAt: user.createdAt,
     },
     token,
+  };
+}
+
+export async function getCurrentUser(userId: string): Promise<GetCurrentUserResponse> {
+  // Query database for user by ID
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  // Return 404 if user not found
+  if (!user) {
+    return {
+      success: false,
+      error: {
+        message: 'User not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  // Return user data (excluding password hash)
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
   };
 }

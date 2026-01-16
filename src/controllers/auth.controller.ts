@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { registerUser, loginUser } from '../services/auth.service.js';
+import { registerUser, loginUser, getCurrentUser } from '../services/auth.service.js';
+import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -41,6 +42,37 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       message: 'Login successful',
       user: result.user,
       token: result.token,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function me(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const result = await getCurrentUser(userId);
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      user: result.user,
     });
   } catch (error) {
     next(error);
