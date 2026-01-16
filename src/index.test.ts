@@ -8,6 +8,7 @@ vi.mock('./db/prisma.js', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
+      create: vi.fn(),
     },
   },
 }));
@@ -578,6 +579,13 @@ describe('POST /api/auth/register', () => {
   beforeEach(async () => {
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
   });
 
   afterEach(() => {
@@ -741,9 +749,16 @@ describe('POST /api/auth/register', () => {
     expect(response.status).not.toBe(400);
   });
 
-  it('should return 201 status for successful validation', async () => {
+  it('should return 201 status for successful registration', async () => {
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
 
     const response = await request(app)
       .post('/api/auth/register')
@@ -751,6 +766,7 @@ describe('POST /api/auth/register', () => {
       .set('Content-Type', 'application/json');
 
     expect(response.status).toBe(201);
+    expect(response.body.message).toBe('User created successfully');
   });
 });
 
@@ -762,6 +778,13 @@ describe('POST /api/auth/register - Email exists check', () => {
   it('should query database for existing email', async () => {
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
 
     await request(app)
       .post('/api/auth/register')
@@ -797,6 +820,13 @@ describe('POST /api/auth/register - Email exists check', () => {
   it('should proceed if email is new (not found in database)', async () => {
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
 
     const response = await request(app)
       .post('/api/auth/register')
@@ -804,12 +834,19 @@ describe('POST /api/auth/register - Email exists check', () => {
       .set('Content-Type', 'application/json');
 
     expect(response.status).toBe(201);
-    expect(response.body.message).toBe('Validation passed');
+    expect(response.body.message).toBe('User created successfully');
   });
 
   it('should normalize email to lowercase when checking database', async () => {
     const { prisma } = await import('./db/prisma.js');
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
 
     await request(app)
       .post('/api/auth/register')
@@ -844,6 +881,136 @@ describe('POST /api/auth/register - Email exists check', () => {
       .set('Content-Type', 'application/json');
 
     // Should return 500 for database errors
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/register - Creates user in database', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should hash password using utility function', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Verify create was called with hashed password (bcrypt hash format)
+    expect(prisma.user.create).toHaveBeenCalled();
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.passwordHash).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('should insert user record with email and hashed password', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.create).toHaveBeenCalledTimes(1);
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.email).toBe('newuser@example.com');
+    expect(createCall.data.passwordHash).toBeDefined();
+    expect(typeof createCall.data.passwordHash).toBe('string');
+  });
+
+  it('should store email in lowercase in database', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'uppercase@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'UPPERCASE@EXAMPLE.COM', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.email).toBe('uppercase@example.com');
+  });
+
+  it('should return created user data in response', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const createdUser = {
+      id: 'created-user-id-123',
+      email: 'created@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T10:30:00.000Z'),
+      updatedAt: new Date('2026-01-15T10:30:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'created@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.id).toBe('created-user-id-123');
+    expect(response.body.user.email).toBe('created@example.com');
+    expect(response.body.user.createdAt).toBeDefined();
+  });
+
+  it('should not include password hash in response', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'test@example.com',
+      passwordHash: 'super-secret-hash',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.body.user).not.toHaveProperty('passwordHash');
+    expect(response.body.user).not.toHaveProperty('password');
+    expect(JSON.stringify(response.body)).not.toContain('super-secret-hash');
+  });
+
+  it('should handle user creation database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockRejectedValue(new Error('Failed to create user'));
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
     expect(response.status).toBe(500);
     expect(response.body).toHaveProperty('error');
   });
