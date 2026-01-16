@@ -1,5 +1,6 @@
 import { prisma } from '../db/prisma.js';
 import { hashPassword } from '../utils/password.js';
+import { signToken } from '../utils/jwt.js';
 import { isValidEmail, isValidPassword } from './validation.service.js';
 
 export interface RegisterUserInput {
@@ -14,6 +15,7 @@ export interface RegisterUserResult {
     email: string;
     createdAt: Date;
   };
+  token: string;
 }
 
 export interface RegisterUserError {
@@ -92,6 +94,9 @@ export async function registerUser(input: RegisterUserInput): Promise<RegisterUs
     },
   });
 
+  // Generate JWT token for the new user
+  const token = signToken(user.id);
+
   return {
     success: true,
     user: {
@@ -99,5 +104,6 @@ export async function registerUser(input: RegisterUserInput): Promise<RegisterUs
       email: user.email,
       createdAt: user.createdAt,
     },
+    token,
   };
 }
