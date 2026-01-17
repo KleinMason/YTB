@@ -59,6 +59,21 @@ export interface GetEntriesError {
 
 export type GetEntriesResponse = GetEntriesResult | GetEntriesError;
 
+export interface GetEntryByIdResult {
+  success: true;
+  entry: EntryData;
+}
+
+export interface GetEntryByIdError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type GetEntryByIdResponse = GetEntryByIdResult | GetEntryByIdError;
+
 export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResponse> {
   const { userId, projectId, startDate, endDate } = input;
 
@@ -111,6 +126,47 @@ export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResp
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     })),
+  };
+}
+
+export async function getEntryById(entryId: string, userId: string): Promise<GetEntryByIdResponse> {
+  const entry = await prisma.yTBEntry.findUnique({
+    where: { id: entryId },
+  });
+
+  if (!entry) {
+    return {
+      success: false,
+      error: {
+        message: 'Entry not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (entry.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    entry: {
+      id: entry.id,
+      userId: entry.userId,
+      projectId: entry.projectId,
+      entryDate: entry.entryDate,
+      yesterdayMd: entry.yesterdayMd,
+      todayMd: entry.todayMd,
+      blockersMd: entry.blockersMd,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
   };
 }
 

@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { createEntry, getEntries } from '../services/entry.service.js';
+import { createEntry, getEntries, getEntryById } from '../services/entry.service.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -74,6 +74,39 @@ export async function create(req: AuthenticatedRequest, res: Response, next: Nex
 
     res.status(201).json({
       message: 'Entry created successfully',
+      entry: result.entry,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const { id } = req.params;
+
+    const result = await getEntryById(id, userId);
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(200).json({
       entry: result.entry,
     });
   } catch (error) {
