@@ -1,6 +1,44 @@
 import { Response, NextFunction } from 'express';
-import { createEntry } from '../services/entry.service.js';
+import { createEntry, getEntries } from '../services/entry.service.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+
+export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const { project_id, start_date, end_date } = req.query;
+
+    const result = await getEntries({
+      userId,
+      projectId: project_id as string | undefined,
+      startDate: start_date as string | undefined,
+      endDate: end_date as string | undefined,
+    });
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      entries: result.entries,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {

@@ -37,6 +37,83 @@ export interface CreateEntryError {
 
 export type CreateEntryResponse = CreateEntryResult | CreateEntryError;
 
+export interface GetEntriesInput {
+  userId: string;
+  projectId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface GetEntriesResult {
+  success: true;
+  entries: EntryData[];
+}
+
+export interface GetEntriesError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type GetEntriesResponse = GetEntriesResult | GetEntriesError;
+
+export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResponse> {
+  const { userId, projectId, startDate, endDate } = input;
+
+  // Build where clause
+  const where: {
+    userId: string;
+    projectId?: string;
+    entryDate?: { gte?: Date; lte?: Date };
+  } = { userId };
+
+  // Filter by project_id if provided
+  if (projectId) {
+    // Verify project exists and belongs to user
+    const projectResult = await getProjectById(projectId, userId);
+    if (!projectResult.success) {
+      return {
+        success: false,
+        error: projectResult.error,
+      };
+    }
+    where.projectId = projectId;
+  }
+
+  // Filter by date range if provided
+  if (startDate || endDate) {
+    where.entryDate = {};
+    if (startDate) {
+      where.entryDate.gte = new Date(startDate + 'T00:00:00.000Z');
+    }
+    if (endDate) {
+      where.entryDate.lte = new Date(endDate + 'T00:00:00.000Z');
+    }
+  }
+
+  const entries = await prisma.yTBEntry.findMany({
+    where,
+    orderBy: { entryDate: 'desc' },
+  });
+
+  return {
+    success: true,
+    entries: entries.map((entry) => ({
+      id: entry.id,
+      userId: entry.userId,
+      projectId: entry.projectId,
+      entryDate: entry.entryDate,
+      yesterdayMd: entry.yesterdayMd,
+      todayMd: entry.todayMd,
+      blockersMd: entry.blockersMd,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    })),
+  };
+}
+
 export async function createEntry(input: CreateEntryInput): Promise<CreateEntryResponse> {
   const { projectId, entryDate, yesterdayMd, todayMd, blockersMd, userId } = input;
 
