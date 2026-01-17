@@ -97,6 +97,20 @@ export interface UpdateProjectError {
 
 export type UpdateProjectResponse = UpdateProjectResult | UpdateProjectError;
 
+export interface DeleteProjectResult {
+  success: true;
+}
+
+export interface DeleteProjectError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type DeleteProjectResponse = DeleteProjectResult | DeleteProjectError;
+
 export async function getProjectById(projectId: string, userId: string): Promise<GetProjectByIdResponse> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -251,5 +265,39 @@ export async function updateProject(
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     },
+  };
+}
+
+export async function deleteProject(projectId: string, userId: string): Promise<DeleteProjectResponse> {
+  const existingProject = await prisma.project.findUnique({
+    where: { id: projectId },
+  });
+
+  if (!existingProject) {
+    return {
+      success: false,
+      error: {
+        message: 'Project not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (existingProject.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  await prisma.project.delete({
+    where: { id: projectId },
+  });
+
+  return {
+    success: true,
   };
 }
