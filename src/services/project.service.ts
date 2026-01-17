@@ -45,6 +45,68 @@ export interface GetProjectsResult {
 
 export type GetProjectsResponse = GetProjectsResult;
 
+export interface GetProjectByIdResult {
+  success: true;
+  project: {
+    id: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+    userId: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}
+
+export interface GetProjectByIdError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type GetProjectByIdResponse = GetProjectByIdResult | GetProjectByIdError;
+
+export async function getProjectById(projectId: string, userId: string): Promise<GetProjectByIdResponse> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+  });
+
+  if (!project) {
+    return {
+      success: false,
+      error: {
+        message: 'Project not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (project.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    project: {
+      id: project.id,
+      name: project.name,
+      color: project.color,
+      icon: project.icon,
+      userId: project.userId,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    },
+  };
+}
+
 export async function getProjects(userId: string): Promise<GetProjectsResponse> {
   const projects = await prisma.project.findMany({
     where: { userId },
