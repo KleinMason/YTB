@@ -109,6 +109,27 @@ export interface DeleteEntryError {
 
 export type DeleteEntryResponse = DeleteEntryResult | DeleteEntryError;
 
+export interface GetPreviousEntryInput {
+  userId: string;
+  projectId: string;
+  date: string;
+}
+
+export interface GetPreviousEntryResult {
+  success: true;
+  entry: EntryData | null;
+}
+
+export interface GetPreviousEntryError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type GetPreviousEntryResponse = GetPreviousEntryResult | GetPreviousEntryError;
+
 export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResponse> {
   const { userId, projectId, startDate, endDate } = input;
 
@@ -393,5 +414,91 @@ export async function deleteEntry(entryId: string, userId: string): Promise<Dele
 
   return {
     success: true,
+  };
+}
+
+export async function getPreviousEntry(input: GetPreviousEntryInput): Promise<GetPreviousEntryResponse> {
+  const { userId, projectId, date } = input;
+
+  // Validate project_id is provided
+  if (!projectId || projectId.trim() === '') {
+    return {
+      success: false,
+      error: {
+        message: 'Project ID is required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Validate date is provided
+  if (!date || date.trim() === '') {
+    return {
+      success: false,
+      error: {
+        message: 'Date is required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Validate date format (YYYY-MM-DD)
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(date)) {
+    return {
+      success: false,
+      error: {
+        message: 'Date must be in YYYY-MM-DD format',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Verify project exists and belongs to user
+  const projectResult = await getProjectById(projectId, userId);
+  if (!projectResult.success) {
+    return {
+      success: false,
+      error: projectResult.error,
+    };
+  }
+
+  // Parse the date
+  const parsedDate = new Date(date + 'T00:00:00.000Z');
+
+  // Find the most recent entry before the given date
+  const entry = await prisma.yTBEntry.findFirst({
+    where: {
+      projectId,
+      userId,
+      entryDate: {
+        lt: parsedDate,
+      },
+    },
+    orderBy: {
+      entryDate: 'desc',
+    },
+  });
+
+  if (!entry) {
+    return {
+      success: true,
+      entry: null,
+    };
+  }
+
+  return {
+    success: true,
+    entry: {
+      id: entry.id,
+      userId: entry.userId,
+      projectId: entry.projectId,
+      entryDate: entry.entryDate,
+      yesterdayMd: entry.yesterdayMd,
+      todayMd: entry.todayMd,
+      blockersMd: entry.blockersMd,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
   };
 }

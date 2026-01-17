@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { createEntry, getEntries, getEntryById, updateEntry, deleteEntry } from '../services/entry.service.js';
+import { createEntry, getEntries, getEntryById, updateEntry, deleteEntry, getPreviousEntry } from '../services/entry.service.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -178,6 +178,43 @@ export async function destroy(req: AuthenticatedRequest, res: Response, next: Ne
     }
 
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getPrevious(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const { project_id, date } = req.query;
+
+    const result = await getPreviousEntry({
+      userId,
+      projectId: project_id as string,
+      date: date as string,
+    });
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      entry: result.entry,
+    });
   } catch (error) {
     next(error);
   }
