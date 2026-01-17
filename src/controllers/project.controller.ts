@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { createProject, getProjects, getProjectById } from '../services/project.service.js';
+import { createProject, getProjects, getProjectById, updateProject } from '../services/project.service.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -86,6 +86,40 @@ export async function create(req: AuthenticatedRequest, res: Response, next: Nex
 
     res.status(201).json({
       message: 'Project created successfully',
+      project: result.project,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function update(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const { name, color, icon } = req.body;
+
+    const result = await updateProject(id, userId, { name, color, icon });
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(200).json({
       project: result.project,
     });
   } catch (error) {

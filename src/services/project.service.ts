@@ -68,6 +68,35 @@ export interface GetProjectByIdError {
 
 export type GetProjectByIdResponse = GetProjectByIdResult | GetProjectByIdError;
 
+export interface UpdateProjectInput {
+  name?: string;
+  color?: string;
+  icon?: string;
+}
+
+export interface UpdateProjectResult {
+  success: true;
+  project: {
+    id: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+    userId: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}
+
+export interface UpdateProjectError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type UpdateProjectResponse = UpdateProjectResult | UpdateProjectError;
+
 export async function getProjectById(projectId: string, userId: string): Promise<GetProjectByIdResponse> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -149,6 +178,66 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
       icon: icon || null,
       userId,
     },
+  });
+
+  return {
+    success: true,
+    project: {
+      id: project.id,
+      name: project.name,
+      color: project.color,
+      icon: project.icon,
+      userId: project.userId,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    },
+  };
+}
+
+export async function updateProject(
+  projectId: string,
+  userId: string,
+  input: UpdateProjectInput
+): Promise<UpdateProjectResponse> {
+  const existingProject = await prisma.project.findUnique({
+    where: { id: projectId },
+  });
+
+  if (!existingProject) {
+    return {
+      success: false,
+      error: {
+        message: 'Project not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (existingProject.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  const updateData: { name?: string; color?: string | null; icon?: string | null } = {};
+
+  if (input.name !== undefined) {
+    updateData.name = input.name.trim();
+  }
+  if (input.color !== undefined) {
+    updateData.color = input.color || null;
+  }
+  if (input.icon !== undefined) {
+    updateData.icon = input.icon || null;
+  }
+
+  const project = await prisma.project.update({
+    where: { id: projectId },
+    data: updateData,
   });
 
   return {

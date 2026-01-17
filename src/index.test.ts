@@ -14,6 +14,7 @@ vi.mock('./db/prisma.js', () => ({
       create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -2428,6 +2429,203 @@ describe('GET /api/projects/:id', () => {
     const response = await request(app)
       .get(`/api/projects/${projectId}`)
       .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(500);
+  });
+});
+
+describe('PUT /api/projects/:id', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'test-secret-key';
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should apply authentication middleware and require valid token', async () => {
+    const response = await request(app)
+      .put('/api/projects/some-project-id')
+      .send({ name: 'Updated Name' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 for invalid token', async () => {
+    const response = await request(app)
+      .put('/api/projects/some-project-id')
+      .set('Authorization', 'Bearer invalid.token.here')
+      .send({ name: 'Updated Name' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should verify project belongs to user and return 404 if not found', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const projectId = 'nonexistent-project-id';
+
+    vi.mocked(prisma.project.findUnique).mockResolvedValue(null);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Updated Name' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Project not found');
+  });
+
+  it('should verify project belongs to user and return 403 if user_id does not match', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const differentUserId = 'different-user-id-456';
+    const projectId = 'test-project-id';
+
+    vi.mocked(prisma.project.findUnique).mockResolvedValue({
+      id: projectId,
+      name: 'Original Project',
+      color: null,
+      icon: null,
+      userId: differentUserId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Updated Name' });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Forbidden');
+  });
+
+  it('should update project fields and return updated project', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const projectId = 'test-project-id-456';
+    const createdAt = new Date('2026-01-15T10:30:00.000Z');
+    const updatedAt = new Date('2026-01-17T11:00:00.000Z');
+
+    vi.mocked(prisma.project.findUnique).mockResolvedValue({
+      id: projectId,
+      name: 'Original Project',
+      color: '#FF0000',
+      icon: 'folder',
+      userId,
+      createdAt,
+      updatedAt: new Date('2026-01-15T10:30:00.000Z'),
+    });
+
+    vi.mocked(prisma.project.update).mockResolvedValue({
+      id: projectId,
+      name: 'Updated Project',
+      color: '#00FF00',
+      icon: 'star',
+      userId,
+      createdAt,
+      updatedAt,
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Updated Project', color: '#00FF00', icon: 'star' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('project');
+    expect(response.body.project).toHaveProperty('id', projectId);
+    expect(response.body.project).toHaveProperty('name', 'Updated Project');
+    expect(response.body.project).toHaveProperty('color', '#00FF00');
+    expect(response.body.project).toHaveProperty('icon', 'star');
+    expect(response.body.project).toHaveProperty('userId', userId);
+
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: projectId },
+      data: { name: 'Updated Project', color: '#00FF00', icon: 'star' },
+    });
+  });
+
+  it('should update only provided fields', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const projectId = 'test-project-id-456';
+    const createdAt = new Date('2026-01-15T10:30:00.000Z');
+    const updatedAt = new Date('2026-01-17T11:00:00.000Z');
+
+    vi.mocked(prisma.project.findUnique).mockResolvedValue({
+      id: projectId,
+      name: 'Original Project',
+      color: '#FF0000',
+      icon: 'folder',
+      userId,
+      createdAt,
+      updatedAt: new Date('2026-01-15T10:30:00.000Z'),
+    });
+
+    vi.mocked(prisma.project.update).mockResolvedValue({
+      id: projectId,
+      name: 'Updated Name Only',
+      color: '#FF0000',
+      icon: 'folder',
+      userId,
+      createdAt,
+      updatedAt,
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Updated Name Only' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.project).toHaveProperty('name', 'Updated Name Only');
+
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: projectId },
+      data: { name: 'Updated Name Only' },
+    });
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const projectId = 'test-project-id';
+
+    vi.mocked(prisma.project.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Updated Name' });
 
     expect(response.status).toBe(500);
   });
