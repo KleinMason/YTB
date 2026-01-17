@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { createEntry, getEntries, getEntryById, updateEntry } from '../services/entry.service.js';
+import { createEntry, getEntries, getEntryById, updateEntry, deleteEntry } from '../services/entry.service.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -147,6 +147,37 @@ export async function update(req: AuthenticatedRequest, res: Response, next: Nex
     res.status(200).json({
       entry: result.entry,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function destroy(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          message: 'Unauthorized',
+          statusCode: 401,
+        },
+      });
+      return;
+    }
+
+    const { id } = req.params;
+
+    const result = await deleteEntry(id, userId);
+
+    if (!result.success) {
+      res.status(result.error.statusCode).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

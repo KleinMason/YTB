@@ -95,6 +95,20 @@ export interface UpdateEntryError {
 
 export type UpdateEntryResponse = UpdateEntryResult | UpdateEntryError;
 
+export interface DeleteEntryResult {
+  success: true;
+}
+
+export interface DeleteEntryError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type DeleteEntryResponse = DeleteEntryResult | DeleteEntryError;
+
 export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResponse> {
   const { userId, projectId, startDate, endDate } = input;
 
@@ -345,5 +359,39 @@ export async function updateEntry(
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     },
+  };
+}
+
+export async function deleteEntry(entryId: string, userId: string): Promise<DeleteEntryResponse> {
+  const existingEntry = await prisma.yTBEntry.findUnique({
+    where: { id: entryId },
+  });
+
+  if (!existingEntry) {
+    return {
+      success: false,
+      error: {
+        message: 'Entry not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (existingEntry.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  await prisma.yTBEntry.delete({
+    where: { id: entryId },
+  });
+
+  return {
+    success: true,
   };
 }
