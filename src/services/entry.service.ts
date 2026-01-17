@@ -1,0 +1,133 @@
+import { prisma } from '../db/prisma.js';
+import { getProjectById } from './project.service.js';
+
+export interface CreateEntryInput {
+  projectId: string;
+  entryDate: string;
+  yesterdayMd?: string;
+  todayMd?: string;
+  blockersMd?: string;
+  userId: string;
+}
+
+export interface EntryData {
+  id: string;
+  userId: string;
+  projectId: string;
+  entryDate: Date;
+  yesterdayMd: string | null;
+  todayMd: string | null;
+  blockersMd: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateEntryResult {
+  success: true;
+  entry: EntryData;
+}
+
+export interface CreateEntryError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type CreateEntryResponse = CreateEntryResult | CreateEntryError;
+
+export async function createEntry(input: CreateEntryInput): Promise<CreateEntryResponse> {
+  const { projectId, entryDate, yesterdayMd, todayMd, blockersMd, userId } = input;
+
+  // Validate required fields
+  if (!projectId || projectId.trim() === '') {
+    return {
+      success: false,
+      error: {
+        message: 'Project ID is required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  if (!entryDate || entryDate.trim() === '') {
+    return {
+      success: false,
+      error: {
+        message: 'Entry date is required',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Validate date format (YYYY-MM-DD)
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(entryDate)) {
+    return {
+      success: false,
+      error: {
+        message: 'Entry date must be in YYYY-MM-DD format',
+        statusCode: 400,
+      },
+    };
+  }
+
+  // Verify project exists and belongs to user
+  const projectResult = await getProjectById(projectId, userId);
+  if (!projectResult.success) {
+    return {
+      success: false,
+      error: projectResult.error,
+    };
+  }
+
+  // Parse the date
+  const parsedDate = new Date(entryDate + 'T00:00:00.000Z');
+
+  // Check for existing entry with same project_id and date
+  const existingEntry = await prisma.yTBEntry.findFirst({
+    where: {
+      projectId,
+      userId,
+      entryDate: parsedDate,
+    },
+  });
+
+  if (existingEntry) {
+    return {
+      success: false,
+      error: {
+        message: 'Entry already exists for this project and date',
+        statusCode: 409,
+      },
+    };
+  }
+
+  // Create entry in database
+  const entry = await prisma.yTBEntry.create({
+    data: {
+      projectId,
+      userId,
+      entryDate: parsedDate,
+      yesterdayMd: yesterdayMd || null,
+      todayMd: todayMd || null,
+      blockersMd: blockersMd || null,
+    },
+  });
+
+  return {
+    success: true,
+    entry: {
+      id: entry.id,
+      userId: entry.userId,
+      projectId: entry.projectId,
+      entryDate: entry.entryDate,
+      yesterdayMd: entry.yesterdayMd,
+      todayMd: entry.todayMd,
+      blockersMd: entry.blockersMd,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
+  };
+}
