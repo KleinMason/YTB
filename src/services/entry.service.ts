@@ -74,6 +74,27 @@ export interface GetEntryByIdError {
 
 export type GetEntryByIdResponse = GetEntryByIdResult | GetEntryByIdError;
 
+export interface UpdateEntryInput {
+  yesterdayMd?: string;
+  todayMd?: string;
+  blockersMd?: string;
+}
+
+export interface UpdateEntryResult {
+  success: true;
+  entry: EntryData;
+}
+
+export interface UpdateEntryError {
+  success: false;
+  error: {
+    message: string;
+    statusCode: number;
+  };
+}
+
+export type UpdateEntryResponse = UpdateEntryResult | UpdateEntryError;
+
 export async function getEntries(input: GetEntriesInput): Promise<GetEntriesResponse> {
   const { userId, projectId, startDate, endDate } = input;
 
@@ -247,6 +268,68 @@ export async function createEntry(input: CreateEntryInput): Promise<CreateEntryR
       todayMd: todayMd || null,
       blockersMd: blockersMd || null,
     },
+  });
+
+  return {
+    success: true,
+    entry: {
+      id: entry.id,
+      userId: entry.userId,
+      projectId: entry.projectId,
+      entryDate: entry.entryDate,
+      yesterdayMd: entry.yesterdayMd,
+      todayMd: entry.todayMd,
+      blockersMd: entry.blockersMd,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
+  };
+}
+
+export async function updateEntry(
+  entryId: string,
+  userId: string,
+  input: UpdateEntryInput
+): Promise<UpdateEntryResponse> {
+  const existingEntry = await prisma.yTBEntry.findUnique({
+    where: { id: entryId },
+  });
+
+  if (!existingEntry) {
+    return {
+      success: false,
+      error: {
+        message: 'Entry not found',
+        statusCode: 404,
+      },
+    };
+  }
+
+  if (existingEntry.userId !== userId) {
+    return {
+      success: false,
+      error: {
+        message: 'Forbidden',
+        statusCode: 403,
+      },
+    };
+  }
+
+  const updateData: { yesterdayMd?: string | null; todayMd?: string | null; blockersMd?: string | null } = {};
+
+  if (input.yesterdayMd !== undefined) {
+    updateData.yesterdayMd = input.yesterdayMd || null;
+  }
+  if (input.todayMd !== undefined) {
+    updateData.todayMd = input.todayMd || null;
+  }
+  if (input.blockersMd !== undefined) {
+    updateData.blockersMd = input.blockersMd || null;
+  }
+
+  const entry = await prisma.yTBEntry.update({
+    where: { id: entryId },
+    data: updateData,
   });
 
   return {

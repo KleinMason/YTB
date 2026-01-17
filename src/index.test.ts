@@ -22,6 +22,7 @@ vi.mock('./db/prisma.js', () => ({
       findFirst: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -3729,6 +3730,228 @@ describe('GET /api/entries/:id', () => {
     const response = await request(app)
       .get(`/api/entries/${entryId}`)
       .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(500);
+  });
+});
+
+describe('PUT /api/entries/:id', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'test-secret-key';
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should apply authentication middleware and require valid token', async () => {
+    const response = await request(app)
+      .put('/api/entries/entry-123')
+      .send({ yesterday_md: 'Updated content' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 for invalid token', async () => {
+    const response = await request(app)
+      .put('/api/entries/entry-123')
+      .set('Authorization', 'Bearer invalid.token.here')
+      .send({ yesterday_md: 'Updated content' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should verify entry belongs to user and return 404 if not found', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const entryId = 'nonexistent-entry-id';
+
+    vi.mocked(prisma.yTBEntry.findUnique).mockResolvedValue(null);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/entries/${entryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ yesterday_md: 'Updated content' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Entry not found');
+  });
+
+  it('should verify entry belongs to user and return 403 if user_id does not match', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const otherUserId = 'other-user-id-456';
+    const entryId = 'entry-id-789';
+    const projectId = 'project-id-000';
+    const entryDate = new Date('2026-01-17T00:00:00.000Z');
+
+    vi.mocked(prisma.yTBEntry.findUnique).mockResolvedValue({
+      id: entryId,
+      userId: otherUserId,
+      projectId,
+      entryDate,
+      yesterdayMd: 'Original content',
+      todayMd: null,
+      blockersMd: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/entries/${entryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ yesterday_md: 'Updated content' });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Forbidden');
+  });
+
+  it('should update entry fields and return updated entry', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const entryId = 'entry-id-456';
+    const projectId = 'project-id-789';
+    const entryDate = new Date('2026-01-17T00:00:00.000Z');
+    const createdAt = new Date('2026-01-17T10:00:00.000Z');
+    const updatedAt = new Date('2026-01-17T12:00:00.000Z');
+
+    vi.mocked(prisma.yTBEntry.findUnique).mockResolvedValue({
+      id: entryId,
+      userId,
+      projectId,
+      entryDate,
+      yesterdayMd: 'Original yesterday',
+      todayMd: 'Original today',
+      blockersMd: 'Original blockers',
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    vi.mocked(prisma.yTBEntry.update).mockResolvedValue({
+      id: entryId,
+      userId,
+      projectId,
+      entryDate,
+      yesterdayMd: 'Updated yesterday',
+      todayMd: 'Updated today',
+      blockersMd: 'Updated blockers',
+      createdAt,
+      updatedAt,
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/entries/${entryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        yesterday_md: 'Updated yesterday',
+        today_md: 'Updated today',
+        blockers_md: 'Updated blockers',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('entry');
+    expect(response.body.entry).toHaveProperty('id', entryId);
+    expect(response.body.entry).toHaveProperty('userId', userId);
+    expect(response.body.entry).toHaveProperty('projectId', projectId);
+    expect(response.body.entry).toHaveProperty('yesterdayMd', 'Updated yesterday');
+    expect(response.body.entry).toHaveProperty('todayMd', 'Updated today');
+    expect(response.body.entry).toHaveProperty('blockersMd', 'Updated blockers');
+
+    expect(prisma.yTBEntry.update).toHaveBeenCalledWith({
+      where: { id: entryId },
+      data: {
+        yesterdayMd: 'Updated yesterday',
+        todayMd: 'Updated today',
+        blockersMd: 'Updated blockers',
+      },
+    });
+  });
+
+  it('should update only provided fields', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const entryId = 'entry-id-456';
+    const projectId = 'project-id-789';
+    const entryDate = new Date('2026-01-17T00:00:00.000Z');
+    const createdAt = new Date('2026-01-17T10:00:00.000Z');
+    const updatedAt = new Date('2026-01-17T12:00:00.000Z');
+
+    vi.mocked(prisma.yTBEntry.findUnique).mockResolvedValue({
+      id: entryId,
+      userId,
+      projectId,
+      entryDate,
+      yesterdayMd: 'Original yesterday',
+      todayMd: 'Original today',
+      blockersMd: 'Original blockers',
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    vi.mocked(prisma.yTBEntry.update).mockResolvedValue({
+      id: entryId,
+      userId,
+      projectId,
+      entryDate,
+      yesterdayMd: 'Updated yesterday',
+      todayMd: 'Original today',
+      blockersMd: 'Original blockers',
+      createdAt,
+      updatedAt,
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/entries/${entryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ yesterday_md: 'Updated yesterday' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('entry');
+
+    expect(prisma.yTBEntry.update).toHaveBeenCalledWith({
+      where: { id: entryId },
+      data: { yesterdayMd: 'Updated yesterday' },
+    });
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const entryId = 'entry-id-456';
+
+    vi.mocked(prisma.yTBEntry.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .put(`/api/entries/${entryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ yesterday_md: 'Updated content' });
 
     expect(response.status).toBe(500);
   });
