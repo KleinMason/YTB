@@ -30,6 +30,41 @@ export interface CreateProjectError {
 
 export type CreateProjectResponse = CreateProjectResult | CreateProjectError;
 
+export interface GetProjectsResult {
+  success: true;
+  projects: {
+    id: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+    userId: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+}
+
+export type GetProjectsResponse = GetProjectsResult;
+
+export async function getProjects(userId: string): Promise<GetProjectsResponse> {
+  const projects = await prisma.project.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return {
+    success: true,
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      color: project.color,
+      icon: project.icon,
+      userId: project.userId,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    })),
+  };
+}
+
 export async function createProject(input: CreateProjectInput): Promise<CreateProjectResponse> {
   const { name, color, icon, userId } = input;
 

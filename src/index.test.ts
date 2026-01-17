@@ -12,6 +12,7 @@ vi.mock('./db/prisma.js', () => ({
     },
     project: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -2100,6 +2101,172 @@ describe('POST /api/projects', () => {
       .post('/api/projects')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Test Project' });
+
+    expect(response.status).toBe(500);
+  });
+});
+
+describe('GET /api/projects', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'test-secret-key';
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should apply authentication middleware and require valid token', async () => {
+    const response = await request(app).get('/api/projects');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 for invalid token', async () => {
+    const response = await request(app)
+      .get('/api/projects')
+      .set('Authorization', 'Bearer invalid.token.here');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should query projects where user_id matches token', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+
+    vi.mocked(prisma.project.findMany).mockResolvedValue([]);
+
+    const token = signToken(userId);
+
+    await request(app)
+      .get('/api/projects')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('should return array of projects', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const projects = [
+      {
+        id: 'project-1',
+        name: 'Project One',
+        color: '#FF0000',
+        icon: 'folder',
+        userId,
+        createdAt: new Date('2026-01-15T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+      },
+      {
+        id: 'project-2',
+        name: 'Project Two',
+        color: null,
+        icon: null,
+        userId,
+        createdAt: new Date('2026-01-14T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-14T00:00:00.000Z'),
+      },
+    ];
+
+    vi.mocked(prisma.project.findMany).mockResolvedValue(projects);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/projects')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('projects');
+    expect(Array.isArray(response.body.projects)).toBe(true);
+    expect(response.body.projects).toHaveLength(2);
+    expect(response.body.projects[0]).toHaveProperty('id', 'project-1');
+    expect(response.body.projects[0]).toHaveProperty('name', 'Project One');
+    expect(response.body.projects[1]).toHaveProperty('id', 'project-2');
+    expect(response.body.projects[1]).toHaveProperty('name', 'Project Two');
+  });
+
+  it('should return empty array when user has no projects', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+
+    vi.mocked(prisma.project.findMany).mockResolvedValue([]);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/projects')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('projects');
+    expect(response.body.projects).toEqual([]);
+  });
+
+  it('should return project with all fields', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const createdAt = new Date('2026-01-15T10:30:00.000Z');
+    const updatedAt = new Date('2026-01-15T11:00:00.000Z');
+
+    vi.mocked(prisma.project.findMany).mockResolvedValue([
+      {
+        id: 'project-1',
+        name: 'Test Project',
+        color: '#00FF00',
+        icon: 'star',
+        userId,
+        createdAt,
+        updatedAt,
+      },
+    ]);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/projects')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    const project = response.body.projects[0];
+    expect(project).toHaveProperty('id', 'project-1');
+    expect(project).toHaveProperty('name', 'Test Project');
+    expect(project).toHaveProperty('color', '#00FF00');
+    expect(project).toHaveProperty('icon', 'star');
+    expect(project).toHaveProperty('userId', userId);
+    expect(project).toHaveProperty('createdAt');
+    expect(project).toHaveProperty('updatedAt');
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('./db/prisma.js');
+    const { signToken } = await import('./utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+
+    vi.mocked(prisma.project.findMany).mockRejectedValue(new Error('Database connection failed'));
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/projects')
+      .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(500);
   });

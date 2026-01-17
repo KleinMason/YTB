@@ -1,9 +1,10 @@
 import { Router, type IRouter } from 'express';
-import { create } from '../controllers/project.controller.js';
+import { create, list } from '../controllers/project.controller.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router: IRouter = Router();
 
+router.get('/', authMiddleware, list);
 router.post('/', authMiddleware, create);
 
 export default router;
