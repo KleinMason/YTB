@@ -4,16 +4,33 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Login } from './Login'
 import * as api from '../lib/api'
+import { AuthProvider } from '../contexts/AuthContext'
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
 
 function renderLogin() {
   return render(
     <MemoryRouter>
-      <Login />
+      <AuthProvider>
+        <Login />
+      </AuthProvider>
     </MemoryRouter>
   )
 }
 
 describe('Login', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear()
+    localStorage.clear()
+  })
+
   it('renders login heading', () => {
     renderLogin()
     expect(screen.getByRole('heading', { level: 2, name: 'Login' })).toBeInTheDocument()
@@ -72,6 +89,8 @@ describe('Login - Form submission', () => {
   let apiPostSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
+    mockNavigate.mockClear()
+    localStorage.clear()
     apiPostSpy = vi.spyOn(api, 'apiPost').mockResolvedValue({ data: { success: true } })
   })
 
@@ -155,5 +174,121 @@ describe('Login - Form submission', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign In' })).not.toBeDisabled()
     })
+  })
+})
+
+describe('Login - Success response handling', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('stores returned token on successful login', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: {
+        success: true,
+        user: { id: '123', email: 'test@example.com' },
+        token: 'test-jwt-token',
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(localStorage.getItem('auth_token')).toBe('test-jwt-token')
+    })
+  })
+
+  it('updates auth context with user data on successful login', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: {
+        success: true,
+        user: { id: '456', email: 'user@example.com' },
+        token: 'another-token',
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'user@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      const storedUser = JSON.parse(localStorage.getItem('auth_user') || '{}')
+      expect(storedUser.id).toBe('456')
+      expect(storedUser.email).toBe('user@example.com')
+    })
+  })
+
+  it('redirects to home page on successful login', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: {
+        success: true,
+        user: { id: '789', email: 'redirect@example.com' },
+        token: 'redirect-token',
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'redirect@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/')
+    })
+  })
+
+  it('does not redirect if login response is unsuccessful', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: { success: false },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'fail@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign In' })).not.toBeDisabled()
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('does not store token if user data is missing from response', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: {
+        success: true,
+        token: 'orphan-token',
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'missing@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign In' })).not.toBeDisabled()
+    })
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 })

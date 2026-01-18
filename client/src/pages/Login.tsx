@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { apiPost } from '../lib/api'
+import { useAuth } from '../contexts/AuthContext'
 
 interface LoginResponse {
   success: boolean
@@ -13,14 +15,20 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
-      await apiPost<LoginResponse>('/auth/login', { email, password })
-      // Success/error handling will be implemented in future features
+      const result = await apiPost<LoginResponse>('/auth/login', { email, password })
+      if (result.data?.success && result.data.user && result.data.token) {
+        login(result.data.user, result.data.token)
+        navigate('/')
+      }
+      // Error handling will be implemented in future features
     } finally {
       setIsLoading(false)
     }

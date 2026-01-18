@@ -4,6 +4,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
+import { AuthProvider } from './contexts/AuthContext'
 
 const routes = [
   {
@@ -20,28 +21,36 @@ const routes = [
   },
 ]
 
+function renderWithProviders(router: ReturnType<typeof createMemoryRouter>) {
+  return render(
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  )
+}
+
 describe('Router', () => {
   it('renders Home page at root path', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
     expect(screen.getByText('Welcome to YTB - Your daily standup tracker')).toBeInTheDocument()
   })
 
   it('renders Login page at /login path', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/login'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Login')
   })
 
   it('renders Register page at /register path', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/register'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Register')
   })
 
   it('all pages include the Layout component with header', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
     expect(screen.getByRole('link', { name: 'YTB' })).toBeInTheDocument()
     expect(screen.getByRole('banner')).toBeInTheDocument()
   })
@@ -49,7 +58,7 @@ describe('Router', () => {
   it('navigates from Home to Login when clicking Login link', async () => {
     const user = userEvent.setup()
     const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
 
     expect(screen.getByText('Welcome to YTB - Your daily standup tracker')).toBeInTheDocument()
 
@@ -61,7 +70,7 @@ describe('Router', () => {
   it('navigates from Home to Register when clicking Register link', async () => {
     const user = userEvent.setup()
     const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
 
     expect(screen.getByText('Welcome to YTB - Your daily standup tracker')).toBeInTheDocument()
 
@@ -73,7 +82,7 @@ describe('Router', () => {
   it('navigates back to Home when clicking YTB logo', async () => {
     const user = userEvent.setup()
     const router = createMemoryRouter(routes, { initialEntries: ['/login'] })
-    render(<RouterProvider router={router} />)
+    renderWithProviders(router)
 
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Login')
 
