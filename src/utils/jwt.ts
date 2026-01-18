@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 
 /**
  * Get the JWT secret from environment variables
@@ -25,10 +25,10 @@ const DEFAULT_EXPIRATION = '24h';
  */
 export function signToken(
   userId: string,
-  expiresIn: string = DEFAULT_EXPIRATION
+  expiresIn: SignOptions['expiresIn'] = DEFAULT_EXPIRATION
 ): string {
   const secret = getJwtSecret();
-  
+
   return jwt.sign(
     { userId },
     secret,
