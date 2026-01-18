@@ -292,3 +292,156 @@ describe('Login - Success response handling', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
+
+describe('Login - Error response handling', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('displays error message when API returns error', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      error: 'Invalid email or password',
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'wrong@example.com')
+    await user.type(screen.getByLabelText('Password'), 'wrongpass')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password')
+    })
+  })
+
+  it('displays error message from response error object', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: {
+        success: false,
+        error: { message: 'Account is locked', statusCode: 401 },
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'locked@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Account is locked')
+    })
+  })
+
+  it('displays generic error message when success is false without specific error', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      data: { success: false },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Login failed. Please check your credentials.')
+    })
+  })
+
+  it('keeps form values intact after error', async () => {
+    vi.spyOn(api, 'apiPost').mockResolvedValue({
+      error: 'Invalid credentials',
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'keep@example.com')
+    await user.type(screen.getByLabelText('Password'), 'mypassword')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+
+    expect(screen.getByLabelText('Email')).toHaveValue('keep@example.com')
+    expect(screen.getByLabelText('Password')).toHaveValue('mypassword')
+  })
+
+  it('allows retry after error', async () => {
+    const apiPostSpy = vi.spyOn(api, 'apiPost')
+    apiPostSpy.mockResolvedValueOnce({
+      error: 'Invalid credentials',
+    })
+    apiPostSpy.mockResolvedValueOnce({
+      data: {
+        success: true,
+        user: { id: '123', email: 'retry@example.com' },
+        token: 'success-token',
+      },
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'retry@example.com')
+    await user.type(screen.getByLabelText('Password'), 'wrongpassword')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+
+    // Retry with correct password
+    await user.clear(screen.getByLabelText('Password'))
+    await user.type(screen.getByLabelText('Password'), 'correctpassword')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/')
+    })
+  })
+
+  it('clears error message on new submission attempt', async () => {
+    let resolveSecondCall: (value: { data?: { success: boolean } }) => void
+    const apiPostSpy = vi.spyOn(api, 'apiPost')
+    apiPostSpy.mockResolvedValueOnce({
+      error: 'First error',
+    })
+    apiPostSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSecondCall = resolve
+        })
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('First error')
+    })
+
+    // Submit again - error should clear while loading
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    resolveSecondCall!({ data: { success: true } })
+  })
+})

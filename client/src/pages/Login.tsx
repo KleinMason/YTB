@@ -15,20 +15,31 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { login } = useAuth()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setError(null)
     setIsLoading(true)
 
     try {
       const result = await apiPost<LoginResponse>('/auth/login', { email, password })
+
+      if (result.error) {
+        setError(result.error)
+        return
+      }
+
       if (result.data?.success && result.data.user && result.data.token) {
         login(result.data.user, result.data.token)
         navigate('/')
+      } else if (result.data?.error?.message) {
+        setError(result.data.error.message)
+      } else if (!result.data?.success) {
+        setError('Login failed. Please check your credentials.')
       }
-      // Error handling will be implemented in future features
     } finally {
       setIsLoading(false)
     }
@@ -42,6 +53,14 @@ export function Login() {
             <h2 className="mb-6 text-center text-2xl font-semibold text-white">
               Login
             </h2>
+            {error && (
+              <div
+                role="alert"
+                className="mb-4 rounded-md border border-red-600 bg-red-900/50 px-4 py-3 text-sm text-red-200"
+              >
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label
