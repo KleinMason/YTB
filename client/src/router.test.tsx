@@ -45,7 +45,7 @@ describe('Router', () => {
   it('renders Register page at /register path', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/register'] })
     renderWithProviders(router)
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Register')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Create Account')
   })
 
   it('all pages include the Layout component with header', () => {
@@ -76,7 +76,7 @@ describe('Router', () => {
 
     await user.click(screen.getByRole('link', { name: 'Register' }))
 
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Register')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Create Account')
   })
 
   it('navigates back to Home when clicking YTB logo', async () => {
