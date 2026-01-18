@@ -68,4 +68,78 @@ describe('Register', () => {
     renderRegister()
     expect(screen.getByLabelText('Password')).toBeRequired()
   })
+
+  describe('email validation', () => {
+    it('shows error when email format is invalid on blur', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      await user.type(emailInput, 'invalidemail')
+      await user.tab() // trigger blur
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Please enter a valid email address')
+    })
+
+    it('shows error when email format is invalid on submit', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      const passwordInput = screen.getByLabelText('Password')
+      const submitButton = screen.getByRole('button', { name: 'Create Account' })
+
+      await user.type(emailInput, 'invalidemail')
+      await user.type(passwordInput, 'password123')
+      await user.click(submitButton)
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Please enter a valid email address')
+    })
+
+    it('does not show error when email format is valid', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      await user.type(emailInput, 'valid@example.com')
+      await user.tab() // trigger blur
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('clears error when valid email is entered after invalid', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+
+      // First enter invalid email
+      await user.type(emailInput, 'invalidemail')
+      await user.tab()
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      // Clear and enter valid email
+      await user.clear(emailInput)
+      await user.type(emailInput, 'valid@example.com')
+      await user.tab()
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('prevents form submission when email is invalid', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      const passwordInput = screen.getByLabelText('Password')
+      const submitButton = screen.getByRole('button', { name: 'Create Account' })
+
+      await user.type(emailInput, 'notanemail')
+      await user.type(passwordInput, 'password123')
+      await user.click(submitButton)
+
+      // Error should be displayed, indicating form was not submitted
+      expect(screen.getByRole('alert')).toHaveTextContent('Please enter a valid email address')
+    })
+  })
 })

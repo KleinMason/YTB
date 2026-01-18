@@ -1,12 +1,37 @@
 import { useState, type FormEvent } from 'react'
 import { Layout } from '../components/Layout'
 
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
 export function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [emailError, setEmailError] = useState('')
+
+  const validateEmail = (): boolean => {
+    if (email && !isValidEmail(email)) {
+      setEmailError('Please enter a valid email address')
+      return false
+    }
+    setEmailError('')
+    return true
+  }
+
+  const handleEmailBlur = () => {
+    validateEmail()
+  }
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+
+    const isEmailValid = validateEmail()
+    if (!isEmailValid) {
+      return
+    }
+
     // Form submission will be implemented in a separate feature
   }
 
@@ -32,10 +57,16 @@ export function Register() {
                   name="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 px-4 py-2.5 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onBlur={handleEmailBlur}
+                  className={`w-full rounded-md border ${emailError ? 'border-red-500' : 'border-gray-600'} bg-gray-700 px-4 py-2.5 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500`}
                   placeholder="you@example.com"
                   required
                 />
+                {emailError && (
+                  <p className="mt-1 text-sm text-red-500" role="alert">
+                    {emailError}
+                  </p>
+                )}
               </div>
               <div>
                 <label
