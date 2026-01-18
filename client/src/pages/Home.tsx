@@ -1,6 +1,6 @@
-import { Layout } from './components/Layout'
+import { Layout } from '../components/Layout'
 
-function App() {
+export function Home() {
   return (
     <Layout>
       <div className="text-gray-300">
@@ -9,5 +9,3 @@ function App() {
     </Layout>
   )
 }
-
-export default App
