@@ -1,13 +1,29 @@
 import { useState, type FormEvent } from 'react'
 import { Layout } from '../components/Layout'
+import { apiPost } from '../lib/api'
+
+interface LoginResponse {
+  success: boolean
+  user?: { id: string; email: string }
+  token?: string
+  error?: { message: string; statusCode: number }
+}
 
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    // Form submission will be implemented in a future feature
+    setIsLoading(true)
+
+    try {
+      await apiPost<LoginResponse>('/auth/login', { email, password })
+      // Success/error handling will be implemented in future features
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -57,9 +73,10 @@ export function Login() {
               </div>
               <button
                 type="submit"
-                className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+                disabled={isLoading}
+                className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Sign In
+                {isLoading ? 'Signing in...' : 'Sign In'}
               </button>
             </form>
           </div>
