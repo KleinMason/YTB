@@ -1,0 +1,1272 @@
+import request from 'supertest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { app } from '../index.js';
+import { signToken, verifyToken } from '../utils/jwt.js';
+
+// Mock prisma client
+vi.mock('../db/prisma.js', () => ({
+  prisma: {
+    user: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+    },
+  },
+}));
+
+// Mock password utilities for login tests - use vi.hoisted because vi.mock is hoisted
+const { mockVerifyPassword, setActualVerifyPassword } = vi.hoisted(() => {
+  let actualImpl: ((password: string, hash: string) => Promise<boolean>) | null = null;
+  const mock = vi.fn((password: string, hash: string) => {
+    // Call the actual implementation by default
+    if (actualImpl) {
+      return actualImpl(password, hash);
+    }
+    return Promise.resolve(false);
+  });
+  return {
+    mockVerifyPassword: mock,
+    setActualVerifyPassword: (impl: typeof actualImpl) => { actualImpl = impl; },
+  };
+});
+
+vi.mock('../utils/password.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/password.js')>();
+  // Store reference to actual implementation for passthrough
+  setActualVerifyPassword(actual.verifyPassword);
+  return {
+    ...actual,
+    verifyPassword: mockVerifyPassword,
+  };
+});
+
+describe('POST /api/auth/register', () => {
+  const originalEnv = process.env;
+
+  beforeEach(async () => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.clearAllMocks();
+  });
+
+  it('should accept email and password in request body', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid input
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 400 if email is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if both email and password are missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({})
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should validate email format and return 400 for invalid email', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalid-email', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should return 400 for email without @ symbol', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalidemail.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should return 400 for email without domain', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Invalid email format');
+  });
+
+  it('should accept valid email formats', async () => {
+    const validEmails = [
+      'test@example.com',
+      'user.name@domain.org',
+      'user+tag@example.co.uk',
+    ];
+
+    for (const email of validEmails) {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ email, password: 'Password123' })
+        .set('Content-Type', 'application/json');
+
+      expect(response.status).not.toBe(400);
+    }
+  });
+
+  it('should return 400 for password less than 8 characters', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Pass1' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must be at least 8 characters long');
+  });
+
+  it('should return 400 for password without uppercase letter', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one uppercase letter');
+  });
+
+  it('should return 400 for password without lowercase letter', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'PASSWORD123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one lowercase letter');
+  });
+
+  it('should return 400 for password without number', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'PasswordABC' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details).toContain('Password must contain at least one number');
+  });
+
+  it('should return multiple password validation errors', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'abc' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Password does not meet requirements');
+    expect(response.body.error.details.length).toBeGreaterThan(1);
+  });
+
+  it('should accept password meeting all requirements', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'ValidPass123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid password
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 201 status for successful registration', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toBe('User created successfully');
+  });
+});
+
+describe('POST /api/auth/register - Email exists check', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should query database for existing email', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should return 409 conflict if email already exists', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'existing@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email already registered');
+    expect(response.body.error.statusCode).toBe(409);
+  });
+
+  it('should proceed if email is new (not found in database)', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toBe('User created successfully');
+  });
+
+  it('should normalize email to lowercase when checking database', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'TEST@EXAMPLE.COM', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should not check database if validation fails', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    // Missing password - validation should fail before database check
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should return 500 for database errors
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/register - Creates user in database', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should hash password using utility function', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Verify create was called with hashed password (bcrypt hash format)
+    expect(prisma.user.create).toHaveBeenCalled();
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.passwordHash).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('should insert user record with email and hashed password', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.create).toHaveBeenCalledTimes(1);
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.email).toBe('newuser@example.com');
+    expect(createCall.data.passwordHash).toBeDefined();
+    expect(typeof createCall.data.passwordHash).toBe('string');
+  });
+
+  it('should store email in lowercase in database', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'uppercase@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'UPPERCASE@EXAMPLE.COM', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    const createCall = vi.mocked(prisma.user.create).mock.calls[0][0];
+    expect(createCall.data.email).toBe('uppercase@example.com');
+  });
+
+  it('should return created user data in response', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const createdUser = {
+      id: 'created-user-id-123',
+      email: 'created@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-15T10:30:00.000Z'),
+      updatedAt: new Date('2026-01-15T10:30:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'created@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.id).toBe('created-user-id-123');
+    expect(response.body.user.email).toBe('created@example.com');
+    expect(response.body.user.createdAt).toBeDefined();
+  });
+
+  it('should not include password hash in response', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'new-user-id',
+      email: 'test@example.com',
+      passwordHash: 'super-secret-hash',
+      createdAt: new Date('2026-01-15T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-15T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.body.user).not.toHaveProperty('passwordHash');
+    expect(response.body.user).not.toHaveProperty('password');
+    expect(JSON.stringify(response.body)).not.toContain('super-secret-hash');
+  });
+
+  it('should handle user creation database errors gracefully', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockRejectedValue(new Error('Failed to create user'));
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'test@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/register - Returns JWT token', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should generate JWT for new user', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const createdUser = {
+      id: 'new-user-id-123',
+      email: 'newuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'newuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveProperty('token');
+    expect(typeof response.body.token).toBe('string');
+  });
+
+  it('should return token in response body', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const createdUser = {
+      id: 'user-with-token-id',
+      email: 'tokenuser@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'tokenuser@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+    // Token should be at the top level of the response body
+    expect(response.body.token).toBeDefined();
+    // Token should be a JWT (3 parts separated by dots)
+    const tokenParts = response.body.token.split('.');
+    expect(tokenParts.length).toBe(3);
+  });
+
+  it('should return valid JWT token that can be verified', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const createdUser = {
+      id: 'valid-token-user-id',
+      email: 'validtoken@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'validtoken@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+
+    // Token should be verifiable
+    const decoded = verifyToken(response.body.token);
+    expect(decoded).toHaveProperty('userId', 'valid-token-user-id');
+    expect(decoded).toHaveProperty('iat');
+    expect(decoded).toHaveProperty('exp');
+  });
+
+  it('should return token containing correct user id', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const createdUser = {
+      id: 'specific-user-id-456',
+      email: 'specificid@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    };
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue(createdUser);
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'specificid@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(201);
+
+    const decoded = verifyToken(response.body.token);
+    expect(decoded.userId).toBe('specific-user-id-456');
+  });
+
+  it('should not return token when validation fails', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'invalid-email', password: 'short' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when email already exists', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date('2026-01-16T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-16T00:00:00.000Z'),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'existing@example.com', password: 'SecurePass123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(409);
+    expect(response.body).not.toHaveProperty('token');
+  });
+});
+
+describe('Authentication Middleware', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: 'test-jwt-secret-key-for-testing' };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should extract token from Authorization header', async () => {
+    const token = signToken('user-123');
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('userId', 'user-123');
+  });
+
+  it('should verify token using JWT utility', async () => {
+    const token = signToken('user-456');
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('authenticated', true);
+  });
+
+  it('should attach user id to request object', async () => {
+    const userId = 'user-789';
+    const token = signToken(userId);
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe(userId);
+  });
+
+  it('should return 401 if Authorization header is missing', async () => {
+    const response = await request(app).get('/api/test-auth');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 if token format is invalid', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'InvalidFormat token123');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid authorization format. Expected: Bearer <token>');
+  });
+
+  it('should return 401 if token is empty after Bearer prefix', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'Bearer ');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+  });
+
+  it('should return 401 if token is invalid', async () => {
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', 'Bearer invalid.token.here');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return 401 if token is expired', async () => {
+    const jwt = await import('jsonwebtoken');
+    const expiredToken = jwt.sign(
+      { userId: 'user-expired' },
+      'test-jwt-secret-key-for-testing',
+      { expiresIn: '-1s' }
+    );
+
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return 401 if token is signed with different secret', async () => {
+    const jwt = await import('jsonwebtoken');
+    const tokenWithDifferentSecret = jwt.sign({ userId: 'user-123' }, 'different-secret');
+
+    const response = await request(app)
+      .get('/api/test-auth')
+      .set('Authorization', `Bearer ${tokenWithDifferentSecret}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+});
+
+describe('POST /api/auth/login - Validation', () => {
+  it('should accept email and password in request body', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 400 for valid input (will return 501 for now since not fully implemented)
+    expect(response.status).not.toBe(400);
+  });
+
+  it('should return 400 if email is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if both email and password are missing', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({})
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if email is empty string', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: '', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+
+  it('should return 400 if password is empty string', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: '' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Email and password are required');
+  });
+});
+
+describe('POST /api/auth/login - Finds user by email', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should query database for user by email', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should return 401 if user not found', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'nonexistent@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid credentials');
+  });
+
+  it('should proceed if user exists', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'existing-user-id',
+      email: 'existing@example.com',
+      passwordHash: 'hashed-password',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'existing@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should not return 401 since user exists and password is correct (will return 501 for now - token return not implemented)
+    expect(response.status).not.toBe(401);
+  });
+
+  it('should normalize email to lowercase when querying database', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'TEST@EXAMPLE.COM', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+    });
+  });
+
+  it('should not query database if validation fails', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    // Missing password - validation should fail before database query
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com' })
+      .set('Content-Type', 'application/json');
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    // Should return 500 for database errors
+    expect(response.status).toBe(500);
+    expect(response.body).toHaveProperty('error');
+  });
+});
+
+describe('POST /api/auth/login - Verifies password', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should compare provided password with stored hash', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password123' })
+      .set('Content-Type', 'application/json');
+
+    expect(mockVerifyPassword).toHaveBeenCalledWith('Password123', '$2b$10$hashedpasswordvalue');
+  });
+
+  it('should return 401 if password is incorrect', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'WrongPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid credentials');
+  });
+
+  it('should proceed if password matches', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'CorrectPassword123' })
+      .set('Content-Type', 'application/json');
+
+    // Should return 200 since password is correct
+    expect(response.status).toBe(200);
+  });
+});
+
+describe('Login endpoint returns JWT token', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should generate JWT for authenticated user', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('token');
+  });
+
+  it('should return token in response body with valid JWT format', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    // JWT tokens have 3 parts separated by dots
+    const token = response.body.token;
+    expect(typeof token).toBe('string');
+    expect(token.split('.')).toHaveLength(3);
+  });
+
+  it('should return valid JWT token that can be verified', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { verifyToken } = await import('../utils/jwt.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    const decoded = verifyToken(response.body.token);
+    expect(decoded).toHaveProperty('userId');
+    expect(decoded).toHaveProperty('iat');
+    expect(decoded).toHaveProperty('exp');
+  });
+
+  it('should return token containing correct user id', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { verifyToken } = await import('../utils/jwt.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'specific-user-id-12345',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(200);
+    const decoded = verifyToken(response.body.token);
+    expect(decoded.userId).toBe('specific-user-id-12345');
+  });
+
+  it('should not return token when validation fails', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: '', password: '' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(400);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when user not found', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'nonexistent@example.com', password: 'ValidPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).not.toHaveProperty('token');
+  });
+
+  it('should not return token when password is incorrect', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockVerifyPassword.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'WrongPassword123' })
+      .set('Content-Type', 'application/json');
+
+    expect(response.status).toBe(401);
+    expect(response.body).not.toHaveProperty('token');
+  });
+});
+
+describe('GET /api/auth/me', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'test-secret-key';
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('should apply authentication middleware and require valid token', async () => {
+    const response = await request(app).get('/api/auth/me');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Authorization header is required');
+  });
+
+  it('should return 401 for invalid token', async () => {
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer invalid.token.here');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('Invalid or expired token');
+  });
+
+  it('should return current user data from token', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { signToken } = await import('../utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+    const userEmail = 'testuser@example.com';
+    const userCreatedAt = new Date('2024-01-01T00:00:00.000Z');
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: userEmail,
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: userCreatedAt,
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('user');
+    expect(response.body.user).toHaveProperty('id', userId);
+    expect(response.body.user).toHaveProperty('email', userEmail);
+    expect(response.body.user).toHaveProperty('createdAt');
+  });
+
+  it('should exclude password hash from response', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { signToken } = await import('../utils/jwt.js');
+
+    const userId = 'test-user-id-123';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: 'testuser@example.com',
+      passwordHash: '$2b$10$secrethashedpassword',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).not.toHaveProperty('passwordHash');
+    expect(response.body.user).not.toHaveProperty('password');
+  });
+
+  it('should return 404 if user not found in database', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { signToken } = await import('../utils/jwt.js');
+
+    const userId = 'nonexistent-user-id';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toHaveProperty('error');
+    expect(response.body.error.message).toBe('User not found');
+  });
+
+  it('should query database with user id from token', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { signToken } = await import('../utils/jwt.js');
+
+    const userId = 'specific-user-id-abc123';
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: userId,
+      email: 'testuser@example.com',
+      passwordHash: '$2b$10$hashedpasswordvalue',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const token = signToken(userId);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: userId },
+    });
+  });
+
+  it('should handle database errors gracefully', async () => {
+    const { prisma } = await import('../db/prisma.js');
+    const { signToken } = await import('../utils/jwt.js');
+
+    const userId = 'test-user-id';
+
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error('Database connection failed'));
+
+    const token = signToken(userId);
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(500);
+  });
+});
