@@ -6,10 +6,15 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email)
 }
 
+function isValidPassword(password: string): boolean {
+  return password.length >= 8
+}
+
 export function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [emailError, setEmailError] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   const validateEmail = (): boolean => {
     if (email && !isValidEmail(email)) {
@@ -24,11 +29,26 @@ export function Register() {
     validateEmail()
   }
 
+  const validatePassword = (): boolean => {
+    if (password && !isValidPassword(password)) {
+      setPasswordError('Password must be at least 8 characters')
+      return false
+    }
+    setPasswordError('')
+    return true
+  }
+
+  const handlePasswordBlur = () => {
+    validatePassword()
+  }
+
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
     const isEmailValid = validateEmail()
-    if (!isEmailValid) {
+    const isPasswordValid = validatePassword()
+
+    if (!isEmailValid || !isPasswordValid) {
       return
     }
 
@@ -81,10 +101,16 @@ export function Register() {
                   name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 px-4 py-2.5 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onBlur={handlePasswordBlur}
+                  className={`w-full rounded-md border ${passwordError ? 'border-red-500' : 'border-gray-600'} bg-gray-700 px-4 py-2.5 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500`}
                   placeholder="••••••••"
                   required
                 />
+                {passwordError && (
+                  <p className="mt-1 text-sm text-red-500" role="alert">
+                    {passwordError}
+                  </p>
+                )}
               </div>
               <button
                 type="submit"

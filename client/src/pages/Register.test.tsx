@@ -142,4 +142,78 @@ describe('Register', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Please enter a valid email address')
     })
   })
+
+  describe('password validation', () => {
+    it('shows error when password is too short on blur', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const passwordInput = screen.getByLabelText('Password')
+      await user.type(passwordInput, 'short')
+      await user.tab() // trigger blur
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Password must be at least 8 characters')
+    })
+
+    it('shows error when password is too short on submit', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      const passwordInput = screen.getByLabelText('Password')
+      const submitButton = screen.getByRole('button', { name: 'Create Account' })
+
+      await user.type(emailInput, 'test@example.com')
+      await user.type(passwordInput, '1234567') // 7 characters
+      await user.click(submitButton)
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Password must be at least 8 characters')
+    })
+
+    it('does not show error when password meets requirements', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const passwordInput = screen.getByLabelText('Password')
+      await user.type(passwordInput, 'password123') // 11 characters
+      await user.tab() // trigger blur
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('clears error when valid password is entered after invalid', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const passwordInput = screen.getByLabelText('Password')
+
+      // First enter short password
+      await user.type(passwordInput, 'short')
+      await user.tab()
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      // Clear and enter valid password
+      await user.clear(passwordInput)
+      await user.type(passwordInput, 'longenoughpassword')
+      await user.tab()
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('prevents form submission when password is invalid', async () => {
+      const user = userEvent.setup()
+      renderRegister()
+
+      const emailInput = screen.getByLabelText('Email')
+      const passwordInput = screen.getByLabelText('Password')
+      const submitButton = screen.getByRole('button', { name: 'Create Account' })
+
+      await user.type(emailInput, 'test@example.com')
+      await user.type(passwordInput, '1234567') // Too short
+      await user.click(submitButton)
+
+      // Error should be displayed, indicating form was not submitted
+      expect(screen.getByRole('alert')).toHaveTextContent('Password must be at least 8 characters')
+    })
+  })
 })
