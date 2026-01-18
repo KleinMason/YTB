@@ -1,4 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const AUTH_TOKEN_KEY = 'auth_token';
+
+function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 interface ApiResponse<T> {
   data?: T;
@@ -23,6 +32,11 @@ export async function api<T>(
     'Content-Type': 'application/json',
     ...headers,
   };
+
+  const token = getStoredToken();
+  if (token && !headers['Authorization']) {
+    requestHeaders['Authorization'] = `Bearer ${token}`;
+  }
 
   const config: RequestInit = {
     method,

@@ -6,10 +6,12 @@ describe('API Client', () => {
 
   beforeEach(() => {
     globalThis.fetch = vi.fn();
+    localStorage.clear();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -125,6 +127,61 @@ describe('API Client', () => {
           headers: {
             'Content-Type': 'application/json',
             Authorization: 'Bearer token123',
+          },
+        })
+      );
+    });
+
+    it('should read token from localStorage and add Authorization header', async () => {
+      localStorage.setItem('auth_token', 'stored-jwt-token');
+      vi.mocked(globalThis.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+
+      await api('/users');
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        '/api/users',
+        expect.objectContaining({
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer stored-jwt-token',
+          },
+        })
+      );
+    });
+
+    it('should not add Authorization header if no token exists', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+
+      await api('/users');
+
+      const callArgs = vi.mocked(globalThis.fetch).mock.calls[0];
+      const headers = (callArgs[1] as RequestInit).headers as Record<string, string>;
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('should not override custom Authorization header with stored token', async () => {
+      localStorage.setItem('auth_token', 'stored-token');
+      vi.mocked(globalThis.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+
+      await api('/users', {
+        headers: { Authorization: 'Bearer custom-token' },
+      });
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        '/api/users',
+        expect.objectContaining({
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer custom-token',
           },
         })
       );
