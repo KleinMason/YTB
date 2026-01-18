@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { AuthProvider, useAuth } from './AuthContext';
 
@@ -24,8 +24,12 @@ function TestComponent() {
 }
 
 describe('AuthContext', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   describe('AuthProvider', () => {
-    it('should provide initial null state for user and token', () => {
+    it('should provide initial null state for user and token when localStorage is empty', () => {
       render(
         <AuthProvider>
           <TestComponent />
@@ -102,6 +106,81 @@ describe('AuthContext', () => {
       }).toThrow('useAuth must be used within an AuthProvider');
 
       console.error = consoleError;
+    });
+  });
+
+  describe('localStorage persistence', () => {
+    it('should save token to localStorage on login', () => {
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      act(() => {
+        screen.getByTestId('login-btn').click();
+      });
+
+      expect(localStorage.getItem('auth_token')).toBe('test-token');
+    });
+
+    it('should save user to localStorage on login', () => {
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      act(() => {
+        screen.getByTestId('login-btn').click();
+      });
+
+      expect(localStorage.getItem('auth_user')).toBe('{"id":"123","email":"test@example.com"}');
+    });
+
+    it('should load token from localStorage on app init', () => {
+      localStorage.setItem('auth_token', 'stored-token');
+      localStorage.setItem('auth_user', '{"id":"456","email":"stored@example.com"}');
+
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      expect(screen.getByTestId('token')).toHaveTextContent('stored-token');
+    });
+
+    it('should load user from localStorage on app init', () => {
+      localStorage.setItem('auth_token', 'stored-token');
+      localStorage.setItem('auth_user', '{"id":"456","email":"stored@example.com"}');
+
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      expect(screen.getByTestId('user')).toHaveTextContent('{"id":"456","email":"stored@example.com"}');
+      expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
+    });
+
+    it('should clear token from localStorage on logout', () => {
+      localStorage.setItem('auth_token', 'stored-token');
+      localStorage.setItem('auth_user', '{"id":"456","email":"stored@example.com"}');
+
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      act(() => {
+        screen.getByTestId('logout-btn').click();
+      });
+
+      expect(localStorage.getItem('auth_token')).toBeNull();
+      expect(localStorage.getItem('auth_user')).toBeNull();
     });
   });
 });
