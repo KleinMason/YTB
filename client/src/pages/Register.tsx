@@ -1,5 +1,15 @@
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { apiPost } from '../lib/api'
+import { useAuth } from '../contexts/AuthContext'
+
+interface RegisterResponse {
+  message?: string
+  user?: { id: string; email: string }
+  token?: string
+  error?: { message: string; statusCode: number }
+}
 
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -15,6 +25,10 @@ export function Register() {
   const [password, setPassword] = useState('')
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const { login } = useAuth()
 
   const validateEmail = (): boolean => {
     if (email && !isValidEmail(email)) {
@@ -42,8 +56,9 @@ export function Register() {
     validatePassword()
   }
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setError(null)
 
     const isEmailValid = validateEmail()
     const isPasswordValid = validatePassword()
@@ -52,7 +67,27 @@ export function Register() {
       return
     }
 
-    // Form submission will be implemented in a separate feature
+    setIsLoading(true)
+
+    try {
+      const result = await apiPost<RegisterResponse>('/auth/register', { email, password })
+
+      if (result.error) {
+        setError(result.error)
+        return
+      }
+
+      if (result.data?.user && result.data.token) {
+        login(result.data.user, result.data.token)
+        navigate('/')
+      } else if (result.data?.error?.message) {
+        setError(result.data.error.message)
+      } else {
+        setError('Registration failed. Please try again.')
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -63,6 +98,14 @@ export function Register() {
             <h2 className="mb-6 text-center text-2xl font-semibold text-white">
               Create Account
             </h2>
+            {error && (
+              <div
+                role="alert"
+                className="mb-4 rounded-md border border-red-600 bg-red-900/50 px-4 py-3 text-sm text-red-200"
+              >
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label
@@ -114,9 +157,10 @@ export function Register() {
               </div>
               <button
                 type="submit"
-                className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+                disabled={isLoading}
+                className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create Account
+                {isLoading ? 'Creating Account...' : 'Create Account'}
               </button>
             </form>
           </div>
